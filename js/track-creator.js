@@ -353,10 +353,20 @@ async function addWaypoint(latlng) {
   }
 }
 
+function indexToLetter(index) {
+  let result = '';
+  let i = index;
+  while (i >= 0) {
+    result = String.fromCharCode((i % 26) + 65) + result;
+    i = Math.floor(i / 26) - 1;
+  }
+  return result;
+}
+
 function addWaypointMarker(latlng, index) {
   const isFirst = index === 0;
   const color = isFirst ? '#10b981' : '#3b82f6';
-  const label = isFirst ? 'A' : (index + 1).toString();
+  const label = indexToLetter(index);
 
   const icon = L.divIcon({
     html: `<div style="background:${color};color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:grab;">${label}</div>`,
@@ -551,7 +561,93 @@ function getAllFlatPoints() {
       flat.push(seg[j]);
     }
   }
-  return flat;
+  return cleanElevations(flat);
+}
+
+function cleanElevations(rawPoints) {
+  if (!rawPoints || rawPoints.length === 0) return rawPoints;
+
+  // Shallow copy points [lat, lon, ele]
+  const points = rawPoints.map(p => [p[0], p[1], p[2] || 0]);
+
+  // Step 1: Interpolate 0 / near-zero corrupt elevation points using nearest valid neighbors
+  for (let i = 0; i < points.length; i++) {
+    if (points[i][2] <= 10) { // Near zero / corrupt elevation sample
+      let prevVal = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        if (points[j][2] > 10) { prevVal = points[j][2]; break; }
+      }
+
+      let nextVal = 0;
+      for (let j = i + 1; j < points.length; j++) {
+        if (points[j][2] > 10) { nextVal = points[j][2]; break; }
+      }
+
+      if (prevVal > 0 && nextVal > 0) {
+        points[i][2] = Math.round((prevVal + nextVal) / 2);
+      } else if (prevVal > 0) {
+        points[i][2] = prevVal;
+      } else if (nextVal > 0) {
+        points[i][2] = nextVal;
+      }
+    }
+  }
+
+  // Step 2: 3-point moving median filter to eliminate single-point spikes or dips
+  if (points.length >= 3) {
+    const smoothed = points.map(p => [...p]);
+    for (let i = 1; i < points.length - 1; i++) {
+      const window = [points[i - 1][2], points[i][2], points[i + 1][2]].sort((a, b) => a - b);
+      smoothed[i][2] = window[1];
+    }
+    return smoothed;
+  }
+
+  return points;
+}
+
+let kilometerMarkers = [];
+
+function updateKilometerMarkers(flatPoints, totalDist) {
+  kilometerMarkers.forEach(m => creator.map.removeLayer(m));
+  kilometerMarkers = [];
+
+  if (!flatPoints || flatPoints.length < 2 || totalDist < 1) return;
+
+  // Interval rule: 1 km if <= 30 km, 5 km if > 30 km
+  const interval = totalDist <= 30 ? 1 : 5;
+  let nextKmTarget = interval;
+  let accumulatedDist = 0;
+
+  for (let i = 1; i < flatPoints.length; i++) {
+    const prev = flatPoints[i - 1];
+    const curr = flatPoints[i];
+    const segDist = haversineDistanceCreator(prev[0], prev[1], curr[0], curr[1]);
+
+    while (accumulatedDist + segDist >= nextKmTarget && nextKmTarget < totalDist) {
+      const ratio = (nextKmTarget - accumulatedDist) / segDist;
+      const kmLat = prev[0] + ratio * (curr[0] - prev[0]);
+      const kmLng = prev[1] + ratio * (curr[1] - prev[1]);
+
+      const kmIcon = L.divIcon({
+        html: `<div class="km-marker-badge">${nextKmTarget}k</div>`,
+        className: '',
+        iconSize: [32, 18],
+        iconAnchor: [16, 9]
+      });
+
+      const marker = L.marker([kmLat, kmLng], {
+        icon: kmIcon,
+        interactive: false,
+        zIndexOffset: -100
+      }).addTo(creator.map);
+
+      kilometerMarkers.push(marker);
+      nextKmTarget += interval;
+    }
+
+    accumulatedDist += segDist;
+  }
 }
 
 function updateMidpoints() {
@@ -731,6 +827,9 @@ function clearCreatedTrack() {
   creator.markers = [];
   creator.midpointMarkers.forEach(m => creator.map.removeLayer(m));
   creator.midpointMarkers = [];
+  kilometerMarkers.forEach(m => creator.map.removeLayer(m));
+  kilometerMarkers = [];
+
   if (creator.polyline) {
     creator.map.removeLayer(creator.polyline);
     creator.polyline = null;
@@ -752,7 +851,8 @@ function updateCreatorStats() {
   for (let i = 1; i < allPoints.length; i++) {
     dist += haversineDistanceCreator(allPoints[i - 1][0], allPoints[i - 1][1], allPoints[i][0], allPoints[i][1]);
     const diff = (allPoints[i][2] || 0) - (allPoints[i - 1][2] || 0);
-    if (diff > 0) gain += diff;
+    // Ignore micro elevation jitter under 1 meter
+    if (diff >= 1.0) gain += diff;
   }
 
   creator.totalDistance = dist;
@@ -766,6 +866,9 @@ function updateCreatorStats() {
 
   const pointsEl = document.getElementById('creatorPoints');
   if (pointsEl) pointsEl.textContent = creator.waypoints.length;
+
+  // Update kilometer milestone badges on map
+  updateKilometerMarkers(allPoints, dist);
 
   // Enable/disable buttons
   const hasPoints = creator.waypoints.length > 0;

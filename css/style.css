@@ -346,3 +346,19 @@ input[type="file"]::file-selector-button {
     padding: 4px;
   }
 }
+
+/* --- Kilometer Marker Badge --- */
+.km-marker-badge {
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: 'Inter', system-ui, sans-serif;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.2;
+}
