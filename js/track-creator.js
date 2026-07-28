@@ -863,6 +863,10 @@ async function saveCreatedTrack() {
 
     await saveTrackToDB(trackData);
 
+    if (typeof loadHistory === 'function') {
+      await loadHistory();
+    }
+
     if (statusEl) {
       statusEl.className = 'text-xs font-bold text-green-600';
       statusEl.textContent = creator.editingTrackId ? '✓ Track actualizado' : '✓ Guardado en Mis Tracks';

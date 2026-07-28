@@ -3,7 +3,7 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v3';
+const CACHE_NAME = 'gpx-tracker-v4';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
 const MAX_TILES = 500;
 
@@ -49,6 +49,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
+  // Bypass Service Worker cache completely for cloud API requests and dynamic data
+  if (url.includes('jsonblob.com') || url.includes('openrouteservice.org') || url.includes('nominatim.openstreetmap.org')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   // Map tiles: network-first with cache fallback
   if (url.includes('tile.openstreetmap.org') || url.includes('arcgisonline.com')) {
     event.respondWith(
@@ -84,9 +90,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: cache-first
+  // Everything else: network-first for JS/HTML app logic, fallback to cache
   event.respondWith(
-    caches.match(event.request)
-      .then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

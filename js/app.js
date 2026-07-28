@@ -39,9 +39,10 @@ function openDB() {
 
 async function getCloudTracks() {
   try {
-    const res = await fetch(CLOUD_SYNC_URL, {
+    const res = await fetch(CLOUD_SYNC_URL + '?t=' + Date.now(), {
       method: 'GET',
-      headers: { 'Accept': 'application/json' }
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store'
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -466,6 +467,8 @@ async function saveCurrentTrack() {
       altitudMin: parsedData.altitudMin,
       gpxContent: fileContent
     });
+
+    await loadHistory();
 
     status.className = 'text-xs font-bold text-green-600 h-4';
     status.textContent = '✓ Guardado';
