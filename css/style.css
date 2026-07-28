@@ -28,17 +28,17 @@ html {
 }
 
 /* --- Chart --- */
-#chartContainer {
+#chartContainer, #chartCrear {
   width: 100%;
   height: 280px;
 }
 
 @media (min-width: 768px) {
-  #chartContainer { height: 400px; }
+  #chartContainer, #chartCrear { height: 400px; }
 }
 
 @media (min-width: 1024px) {
-  #chartContainer { height: 500px; }
+  #chartContainer, #chartCrear { height: 500px; }
 }
 
 /* --- Glassmorphism Card --- */

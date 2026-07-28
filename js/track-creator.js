@@ -6,6 +6,7 @@
 // --- Creator State ---
 const creator = {
   map: null,
+  chart: null,
   initialized: false,
   mode: 'road',                   // 'manual' | 'road'
   profile: 'cycling-road',
@@ -17,6 +18,7 @@ const creator = {
   midpointMarkers: [],
   undoStack: [],                  // Each entry: { waypoints, routeSegments } snapshot
   totalDistance: 0,
+  elevationGain: 0,
   isRouting: false                // Prevent double-clicks while routing
 };
 
@@ -26,7 +28,10 @@ const creator = {
 
 function initCreator() {
   if (creator.initialized) {
-    setTimeout(() => creator.map.invalidateSize(), 200);
+    setTimeout(() => {
+      if (creator.map) creator.map.invalidateSize();
+      if (creator.chart) creator.chart.resize();
+    }, 200);
     return;
   }
 
@@ -41,10 +46,31 @@ function initCreator() {
     attributionControl: true
   }).setView([40.4167, -3.7033], 6);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
     maxZoom: 19
-  }).addTo(creator.map);
+  });
+
+  const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri',
+    maxZoom: 19
+  });
+
+  osmLayer.addTo(creator.map);
+
+  L.control.layers({
+    '🗺️ Mapa': osmLayer,
+    '🛰️ Satélite': satLayer
+  }, null, { position: 'topright' }).addTo(creator.map);
+
+  // Init chart
+  const chartEl = document.getElementById('chartCrear');
+  if (chartEl) {
+    creator.chart = echarts.init(chartEl);
+    window.addEventListener('resize', () => {
+      if (creator.chart) creator.chart.resize();
+    });
+  }
 
   // Click handler
   creator.map.on('click', (e) => {
@@ -57,7 +83,10 @@ function initCreator() {
 
   creator.initialized = true;
 
-  setTimeout(() => creator.map.invalidateSize(), 200);
+  setTimeout(() => {
+    if (creator.map) creator.map.invalidateSize();
+    if (creator.chart) creator.chart.resize();
+  }, 200);
 }
 
 function setupCreatorEvents() {
@@ -501,21 +530,28 @@ function clearCreatedTrack() {
 
 
 // =============================================
-// 8. STATS
+// 8. STATS & LIVE CHART
 // =============================================
 
 function updateCreatorStats() {
   const allPoints = getAllFlatPoints();
   let dist = 0;
+  let gain = 0;
 
   for (let i = 1; i < allPoints.length; i++) {
     dist += haversineDistanceCreator(allPoints[i - 1][0], allPoints[i - 1][1], allPoints[i][0], allPoints[i][1]);
+    const diff = (allPoints[i][2] || 0) - (allPoints[i - 1][2] || 0);
+    if (diff > 0) gain += diff;
   }
 
   creator.totalDistance = dist;
+  creator.elevationGain = Math.round(gain);
 
   const distEl = document.getElementById('creatorDistance');
   if (distEl) distEl.textContent = dist.toFixed(2) + ' km';
+
+  const eleEl = document.getElementById('creatorEleGain');
+  if (eleEl) eleEl.textContent = Math.round(gain) + ' m';
 
   const pointsEl = document.getElementById('creatorPoints');
   if (pointsEl) pointsEl.textContent = creator.waypoints.length;
@@ -528,6 +564,75 @@ function updateCreatorStats() {
   document.getElementById('btnClearTrack').disabled = !hasPoints;
   document.getElementById('btnSaveCreated').disabled = !hasTrack;
   document.getElementById('btnDownloadCreated').disabled = !hasTrack;
+
+  // Render live elevation chart
+  renderCreatorChart(allPoints);
+}
+
+function renderCreatorChart(allPoints) {
+  const noDataMsg = document.getElementById('noDataMessageCrear');
+
+  if (!creator.chart) return;
+
+  if (allPoints.length < 2) {
+    if (noDataMsg) noDataMsg.classList.remove('hidden');
+    creator.chart.clear();
+    return;
+  }
+
+  if (noDataMsg) noDataMsg.classList.add('hidden');
+
+  // Build chart series data [dist, ele]
+  let currentDist = 0;
+  const chartData = [[0, allPoints[0][2] || 0]];
+
+  for (let i = 1; i < allPoints.length; i++) {
+    currentDist += haversineDistanceCreator(allPoints[i - 1][0], allPoints[i - 1][1], allPoints[i][0], allPoints[i][1]);
+    chartData.push([parseFloat(currentDist.toFixed(2)), Math.round(allPoints[i][2] || 0)]);
+  }
+
+  creator.chart.setOption({
+    grid: { left: '12%', right: '5%', bottom: '15%', top: '10%' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      borderColor: '#e2e8f0',
+      textStyle: { fontSize: 12, fontFamily: 'Inter' },
+      formatter: (params) => {
+        const d = params[0].value[0];
+        const ele = params[0].value[1];
+        return `<b>Dist.:</b> ${d.toFixed(2)} km<br><b>Alt.:</b> ${ele} m`;
+      }
+    },
+    xAxis: {
+      type: 'value',
+      name: 'km',
+      splitLine: { show: false },
+      axisLabel: { fontSize: 10, fontFamily: 'Inter' }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'm',
+      scale: true,
+      axisLabel: { fontSize: 10, fontFamily: 'Inter' }
+    },
+    dataZoom: [
+      { type: 'inside' }
+    ],
+    series: [{
+      type: 'line',
+      data: chartData,
+      symbol: 'none',
+      smooth: true,
+      lineStyle: { width: 2.5, color: '#10b981' },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(16, 185, 129, 0.5)' },
+          { offset: 1, color: 'rgba(16, 185, 129, 0.02)' }
+        ])
+      }
+    }]
+  }, true);
 }
 
 function haversineDistanceCreator(lat1, lon1, lat2, lon2) {

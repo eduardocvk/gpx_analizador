@@ -3,7 +3,7 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v2';
+const CACHE_NAME = 'gpx-tracker-v3';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
 const MAX_TILES = 500;
 
@@ -50,7 +50,7 @@ self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
   // Map tiles: network-first with cache fallback
-  if (url.includes('tile.openstreetmap.org')) {
+  if (url.includes('tile.openstreetmap.org') || url.includes('arcgisonline.com')) {
     event.respondWith(
       fetch(event.request)
         .then(response => {

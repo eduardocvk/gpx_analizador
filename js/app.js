@@ -139,10 +139,22 @@ function initMap() {
     attributionControl: true
   }).setView([40.4167, -3.7033], 6);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
     maxZoom: 19
-  }).addTo(map);
+  });
+
+  const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri',
+    maxZoom: 19
+  });
+
+  osmLayer.addTo(map);
+
+  L.control.layers({
+    '🗺️ Mapa': osmLayer,
+    '🛰️ Satélite': satLayer
+  }, null, { position: 'topright' }).addTo(map);
 
   mapMarker = L.circleMarker([0, 0], {
     radius: 7,
