@@ -526,11 +526,20 @@ function renderHistoryTable(tracks) {
       day: '2-digit', month: '2-digit', year: 'numeric'
     });
 
+    const cloudBadge = t.inCloud 
+      ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-50 text-blue-600 border border-blue-200 shrink-0" title="Sincronizado en la nube">☁️ Nube</span>`
+      : `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-gray-100 text-gray-500 border border-gray-200 shrink-0" title="Guardado solo en este dispositivo">📱 Local</span>`;
+
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-blue-50/60 cursor-pointer transition-colors group';
     tr.innerHTML = `
       <td class="px-4 py-3 whitespace-nowrap text-gray-400 text-xs">${fechaStr}</td>
-      <td class="px-4 py-3 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">${escapeHtml(t.nombre)}</td>
+      <td class="px-4 py-3 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+        <div class="flex items-center justify-between gap-2">
+          <span>${escapeHtml(t.nombre)}</span>
+          ${cloudBadge}
+        </div>
+      </td>
       <td class="px-4 py-3 whitespace-nowrap text-right text-blue-600 font-bold tabular-nums">${(t.distancia || 0).toFixed(2)}</td>
       <td class="px-4 py-3 whitespace-nowrap text-right text-emerald-600 font-bold tabular-nums">+${(t.desnivelPositivo || 0).toLocaleString('es-ES')}m</td>
       <td class="px-4 py-3 whitespace-nowrap text-center text-xs">
@@ -595,7 +604,12 @@ function renderHistoryTable(tracks) {
 function mergeTracks(localList, cloudList) {
   const trackMap = new Map();
   (localList || []).forEach(t => { if (t && t.id) trackMap.set(t.id, t); });
-  (cloudList || []).forEach(t => { if (t && t.id) trackMap.set(t.id, t); });
+  (cloudList || []).forEach(t => { 
+    if (t && t.id) {
+      const existing = trackMap.get(t.id);
+      trackMap.set(t.id, { ...(existing || {}), ...t, inCloud: true });
+    }
+  });
 
   const merged = Array.from(trackMap.values());
   merged.sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
@@ -635,10 +649,8 @@ async function loadHistory() {
         if (t && t.id) await saveTrackToLocalDB(t);
       }
 
-      // Sync combined list to cloud if local had new tracks
-      if (mergedTracks.length > (cloudTracks ? cloudTracks.length : 0)) {
-        await syncTracksToCloud(mergedTracks);
-      }
+      // Sync combined list to cloud
+      await syncTracksToCloud(mergedTracks);
 
       renderHistoryTable(mergedTracks);
 
@@ -772,6 +784,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize map and chart
   initMap();
   initChart();
+
+  // Background auto-sync history
+  setTimeout(() => loadHistory(), 300);
 
   // File input
   document.getElementById('gpxFile').addEventListener('change', handleFileSelect);
