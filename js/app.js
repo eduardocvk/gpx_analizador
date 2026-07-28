@@ -38,14 +38,23 @@ function openDB() {
 }
 
 function generateGPXFromPoints(name, points) {
-  if (!points || !Array.isArray(points)) return '';
+  if (!points || !Array.isArray(points) || points.length === 0) return '';
   const safeName = (name || 'Ruta').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  let xml = `<?xml version="1.1" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Tracker">\n  <trk>\n    <name>${safeName}</name>\n    <trkseg>\n`;
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Tracker">\n  <trk>\n    <name>${safeName}</name>\n    <trkseg>\n`;
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
-    const lat = p[0];
-    const lon = p[1];
-    const ele = p[2] !== undefined ? p[2] : 0;
+    if (!p) continue;
+    let lat, lon, ele;
+    if (Array.isArray(p)) {
+      lat = p[0];
+      lon = p[1];
+      ele = p[2] !== undefined ? p[2] : 0;
+    } else {
+      lat = p.lat !== undefined ? p.lat : p[0];
+      lon = p.lon !== undefined ? p.lon : (p.lng !== undefined ? p.lng : p[1]);
+      ele = p.ele !== undefined ? p.ele : (p[2] !== undefined ? p[2] : 0);
+    }
+    if (isNaN(lat) || isNaN(lon)) continue;
     xml += `      <trkpt lat="${lat}" lon="${lon}"><ele>${ele}</ele></trkpt>\n`;
   }
   xml += `    </trkseg>\n  </trk>\n</gpx>`;
@@ -55,31 +64,40 @@ function generateGPXFromPoints(name, points) {
 function prepareTrackForCloud(t) {
   const copy = { ...t, inCloud: true };
 
-  // If points exist, use compact points and strip heavy gpxContent XML from HTTP body
-  if (!copy.points && copy.gpxContent) {
+  // If points array is missing or empty, extract from gpxContent
+  if ((!copy.points || copy.points.length === 0) && copy.gpxContent) {
     try {
       const parsed = parseGPX(copy.gpxContent);
-      if (parsed && parsed.points) {
-        copy.points = parsed.points.map(p => [
-          Number(p.lat.toFixed(5)),
-          Number(p.lon.toFixed(5)),
-          Math.round(p.ele || 0)
+      const rawPoints = parsed.puntos || parsed.points;
+      if (rawPoints && rawPoints.length > 0) {
+        copy.points = rawPoints.map(p => [
+          Number((p.lat !== undefined ? p.lat : p[0]).toFixed(5)),
+          Number((p.lon !== undefined ? p.lon : (p.lng !== undefined ? p.lng : p[1])).toFixed(5)),
+          Math.round(p.ele !== undefined ? p.ele : (p[2] || 0))
         ]);
       }
     } catch (e) {
-      console.warn('Could not parse GPX points for cloud sync:', t.id);
+      console.warn('Could not parse GPX points for track:', t.id, e);
     }
   }
 
-  // Remove bulky raw XML string to keep payload lightweight (<50 KB)
-  delete copy.gpxContent;
+  // Only delete heavy gpxContent if we successfully have points!
+  if (copy.points && copy.points.length > 0) {
+    delete copy.gpxContent;
+  }
+
   return copy;
 }
 
 function restoreCloudTrack(t) {
   const track = { ...t, inCloud: true };
-  if (!track.gpxContent && track.points && track.points.length > 0) {
-    track.gpxContent = generateGPXFromPoints(track.nombre, track.points);
+  const pts = track.points || track.puntos;
+
+  // Rebuild gpxContent if missing or invalid
+  if (!track.gpxContent || !track.gpxContent.includes('<trkpt')) {
+    if (pts && pts.length > 0) {
+      track.gpxContent = generateGPXFromPoints(track.nombre, pts);
+    }
   }
   return track;
 }
@@ -302,6 +320,7 @@ function parseGPX(text) {
   return {
     nombre: trackName,
     puntos: points,
+    points: points,
     distancia: parseFloat(totalDist.toFixed(2)),
     desnivelPositivo: Math.round(gain),
     desnivelNegativo: Math.round(loss),
