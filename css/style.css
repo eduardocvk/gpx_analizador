@@ -30,15 +30,96 @@ html {
 /* --- Chart --- */
 #chartContainer {
   width: 100%;
-  height: 280px;
+  height: 260px;
 }
 
 @media (min-width: 768px) {
-  #chartContainer { height: 400px; }
+  #chartContainer { height: 320px; }
 }
 
 @media (min-width: 1024px) {
-  #chartContainer { height: 500px; }
+  #chartContainer { height: 360px; }
+}
+
+.profile-card {
+  position: relative;
+}
+
+.profile-toolbar {
+  min-height: 42px;
+  padding: 0.25rem 0.35rem 0.1rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.profile-chart-stage {
+  position: relative;
+  min-height: 0;
+}
+
+.profile-tool-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+.profile-tool-btn:hover {
+  color: #2563eb;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.profile-tool-btn:active {
+  transform: scale(0.95);
+}
+
+.profile-tool-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.profile-card.profile-expanded {
+  position: fixed;
+  inset: 1rem;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.profile-card.profile-expanded:hover {
+  transform: none;
+}
+
+.profile-card.profile-expanded .profile-chart-stage {
+  flex: 1;
+}
+
+.profile-card.profile-expanded #chartContainer {
+  height: 100%;
+}
+
+body.profile-modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .profile-card.profile-expanded {
+    inset: 0;
+    border-radius: 0;
+  }
 }
 
 /* --- Glassmorphism Card --- */
@@ -167,6 +248,17 @@ input[type="file"]::file-selector-button {
 .leaflet-popup-content-wrapper {
   border-radius: 0.75rem;
   font-family: 'Inter', system-ui, sans-serif;
+}
+
+.profile-map-tooltip {
+  border: 0;
+  border-radius: 0.65rem;
+  padding: 0.4rem 0.6rem;
+  color: #0f172a;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
 }
 
 /* =============================================

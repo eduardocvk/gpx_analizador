@@ -3,16 +3,16 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v8';
+const CACHE_NAME = 'gpx-tracker-v9';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
 const MAX_TILES = 500;
 
 const APP_SHELL = [
   './',
   './index.html',
-  './css/style.css',
-  './js/app.js?v=8',
-  './js/track-creator.js?v=8',
+  './css/style.css?v=9',
+  './js/app.js?v=9',
+  './js/track-creator.js?v=9',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

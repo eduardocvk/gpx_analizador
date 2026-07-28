@@ -472,17 +472,24 @@ function initMap() {
   }, null, { position: 'topright' }).addTo(map);
 
   mapMarker = L.circleMarker([0, 0], {
-    radius: 7,
-    color: '#2563eb',
-    fillColor: '#ffffff',
+    radius: 8,
+    color: '#ffffff',
+    fillColor: '#2563eb',
     fillOpacity: 1,
-    weight: 3
-  }).addTo(map);
+    weight: 3,
+    interactive: false
+  }).bindTooltip('', {
+    direction: 'top',
+    offset: [0, -8],
+    opacity: 0.95,
+    className: 'profile-map-tooltip'
+  });
 }
 
 function updateMap(points) {
   const latLngs = points.map(p => [p.lat, p.lon]);
   if (mapPolyline) map.removeLayer(mapPolyline);
+  clearProfileMapMarker();
 
   mapPolyline = L.polyline(latLngs, {
     color: '#ef4444',
@@ -515,12 +522,40 @@ function updateMap(points) {
   window._endMarker = L.marker(latLngs[latLngs.length - 1], { icon: endIcon }).addTo(map);
 }
 
-function updateMarkerFromChart(dist) {
-  if (!parsedData) return;
-  const p = parsedData.puntos.reduce((prev, curr) =>
-    Math.abs(curr.distance - dist) < Math.abs(prev.distance - dist) ? curr : prev
-  );
+function findNearestTrackPoint(dist) {
+  if (!parsedData?.puntos?.length) return null;
+  const points = parsedData.puntos;
+  let low = 0;
+  let high = points.length - 1;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (points[mid].distance < dist) low = mid + 1;
+    else high = mid;
+  }
+
+  if (low === 0) return points[0];
+  const before = points[low - 1];
+  const after = points[low];
+  return Math.abs(after.distance - dist) < Math.abs(before.distance - dist) ? after : before;
+}
+
+function updateMarkerFromChart(dist, slope = null) {
+  if (!map || !mapMarker) return;
+  const p = findNearestTrackPoint(dist);
+  if (!p) return;
+
   mapMarker.setLatLng([p.lat, p.lon]);
+  const slopeLine = Number.isFinite(slope) ? `<br><b>Pendiente:</b> ${slope.toFixed(1)}%` : '';
+  mapMarker.setTooltipContent(`<b>${p.distance.toFixed(2)} km</b><br>${Math.round(p.ele)} m${slopeLine}`);
+  if (!map.hasLayer(mapMarker)) mapMarker.addTo(map);
+  mapMarker.openTooltip();
+}
+
+function clearProfileMapMarker() {
+  if (map && mapMarker && map.hasLayer(mapMarker)) {
+    map.removeLayer(mapMarker);
+  }
 }
 
 
@@ -531,6 +566,7 @@ function updateMarkerFromChart(dist) {
 function initChart() {
   chart = echarts.init(document.getElementById('chartContainer'));
   window.addEventListener('resize', () => chart.resize());
+  chart.getZr().on('globalout', clearProfileMapMarker);
 }
 
 function getSlopeColor(slope) {
@@ -544,7 +580,7 @@ function getSlopeColor(slope) {
 }
 
 function renderChart() {
-  const interval = parseFloat(document.getElementById('intervalSize').value);
+  const interval = Math.max(parseFloat(document.getElementById('intervalSize').value) || 1, 0.1);
   const points = parsedData.puntos;
   const maxDist = points[points.length - 1].distance;
 
@@ -560,84 +596,162 @@ function renderChart() {
     intervals.push(points[points.length - 1]);
   }
 
-  // Calculate slope for each interval
-  let pieces = [];
-  let markAreas = [];
+  // Calculate one slope value for each selected distance interval.
+  const slopeSegments = [];
 
   for (let i = 0; i < intervals.length - 1; i++) {
     const run = intervals[i + 1].distance - intervals[i].distance;
     const rise = intervals[i + 1].ele - intervals[i].ele;
-    const slope = (rise / (run * 1000)) * 100;
-    const color = getSlopeColor(slope);
-
-    pieces.push({
-      gt: intervals[i].distance,
-      lte: intervals[i + 1].distance,
-      color: color
+    const slope = run > 0 ? (rise / (run * 1000)) * 100 : 0;
+    slopeSegments.push({
+      start: intervals[i].distance,
+      end: intervals[i + 1].distance,
+      slope
     });
-
-    markAreas.push([
-      {
-        name: slope.toFixed(1) + '%',
-        xAxis: intervals[i].distance,
-        label: {
-          show: true,
-          position: 'top',
-          fontSize: 9,
-          fontWeight: 'bold',
-          color: '#333'
-        }
-      },
-      { xAxis: intervals[i + 1].distance }
-    ]);
   }
 
-  // Render chart
+  const slopePieces = slopeSegments.map((segment, index) => ({
+    ...(index === 0 ? { gte: segment.start } : { gt: segment.start }),
+    lte: segment.end,
+    color: getSlopeColor(segment.slope)
+  }));
+
+  let segmentIndex = 0;
+  const chartData = points.map(p => {
+    while (segmentIndex < slopeSegments.length - 1 && p.distance > slopeSegments[segmentIndex].end) {
+      segmentIndex++;
+    }
+    return [p.distance, p.ele, slopeSegments[segmentIndex]?.slope || 0];
+  });
+
+  // The translucent area follows the creator style; the foreground line is
+  // coloured independently using the slope stored in the third dimension.
   chart.setOption({
-    grid: { left: '12%', right: '5%', bottom: '15%', top: '10%' },
+    animationDuration: 350,
+    grid: { left: 52, right: 22, bottom: 58, top: 18, containLabel: false },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#e2e8f0',
       textStyle: { fontSize: 12, fontFamily: 'Inter' },
+      axisPointer: {
+        type: 'line',
+        snap: true,
+        lineStyle: { color: '#2563eb', width: 1.5, type: 'dashed' }
+      },
       formatter: (params) => {
-        const d = params[0].value[0];
-        updateMarkerFromChart(d);
-        return `<b>Dist.:</b> ${d.toFixed(2)} km<br><b>Alt.:</b> ${params[0].value[1].toFixed(0)} m`;
+        const profilePoint = params.find(item => item.seriesName === 'Perfil');
+        if (!profilePoint) return '';
+        const [d, elevation, slope] = profilePoint.value;
+        updateMarkerFromChart(d, slope);
+        return `<b>${d.toFixed(2)} km</b><br>Altitud: ${elevation.toFixed(0)} m<br> Pendiente: <span style="color:${getSlopeColor(slope)};font-weight:800">${slope.toFixed(1)}%</span>`;
       }
     },
     xAxis: {
       type: 'value',
       name: 'km',
+      min: 0,
+      max: maxDist,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
       splitLine: { show: false },
-      axisLabel: { fontSize: 10, fontFamily: 'Inter' }
+      axisLabel: { fontSize: 10, fontFamily: 'Inter', color: '#64748b' },
+      nameTextStyle: { color: '#64748b', fontWeight: 700 }
     },
     yAxis: {
       type: 'value',
       name: 'm',
       scale: true,
-      axisLabel: { fontSize: 10, fontFamily: 'Inter' }
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } },
+      axisLabel: { fontSize: 10, fontFamily: 'Inter', color: '#64748b' },
+      nameTextStyle: { color: '#64748b', fontWeight: 700 }
     },
     dataZoom: [
-      { type: 'slider', bottom: 5, height: 20 },
-      { type: 'inside' }
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'none',
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: true
+      },
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        filterMode: 'none',
+        bottom: 8,
+        height: 22,
+        borderColor: 'transparent',
+        backgroundColor: '#f1f5f9',
+        fillerColor: 'rgba(37, 99, 235, 0.16)',
+        handleStyle: { color: '#2563eb', borderColor: '#ffffff' },
+        dataBackground: {
+          lineStyle: { color: '#94a3b8' },
+          areaStyle: { color: '#cbd5e1' }
+        }
+      }
     ],
     visualMap: {
       show: false,
       type: 'piecewise',
+      seriesIndex: 1,
       dimension: 0,
-      pieces: pieces
+      pieces: slopePieces
     },
-    series: [{
-      type: 'line',
-      data: points.map(p => [p.distance, p.ele]),
-      symbol: 'none',
-      smooth: true,
-      lineStyle: { width: 2, color: '#333' },
-      areaStyle: { opacity: 0.8 },
-      markArea: { silent: true, data: markAreas }
-    }]
+    series: [
+      {
+        name: 'Área',
+        type: 'line',
+        data: chartData.map(item => [item[0], item[1]]),
+        symbol: 'none',
+        smooth: 0.12,
+        silent: true,
+        tooltip: { show: false },
+        lineStyle: { width: 0, opacity: 0 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(16, 185, 129, 0.38)' },
+            { offset: 1, color: 'rgba(16, 185, 129, 0.02)' }
+          ])
+        }
+      },
+      {
+        name: 'Perfil',
+        type: 'line',
+        data: chartData,
+        encode: { x: 0, y: 1, tooltip: [0, 1, 2] },
+        symbol: 'none',
+        smooth: 0.12,
+        lineStyle: { width: 3 },
+        emphasis: { lineStyle: { width: 4 } }
+      }
+    ]
   }, true);
+}
+
+function resetChartZoom() {
+  if (!chart) return;
+  chart.dispatchAction({ type: 'dataZoom', start: 0, end: 100 });
+}
+
+function toggleChartFullscreen(forceExpanded = null) {
+  const card = document.getElementById('profileCard');
+  const button = document.getElementById('btnToggleChartFullscreen');
+  if (!card || !button) return;
+
+  const shouldExpand = forceExpanded === null
+    ? !card.classList.contains('profile-expanded')
+    : forceExpanded;
+
+  card.classList.toggle('profile-expanded', shouldExpand);
+  document.body.classList.toggle('profile-modal-open', shouldExpand);
+  button.querySelector('.expand-icon')?.classList.toggle('hidden', shouldExpand);
+  button.querySelector('.collapse-icon')?.classList.toggle('hidden', !shouldExpand);
+  button.title = shouldExpand ? 'Reducir perfil' : 'Ampliar perfil';
+  button.setAttribute('aria-label', button.title);
+  setTimeout(() => chart?.resize(), 60);
 }
 
 
@@ -1069,6 +1183,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Interval change
   document.getElementById('intervalSize').addEventListener('change', () => {
     if (parsedData) renderChart();
+  });
+
+  const resetChartZoomBtn = document.getElementById('btnResetChartZoom');
+  const toggleChartFullscreenBtn = document.getElementById('btnToggleChartFullscreen');
+  if (resetChartZoomBtn) resetChartZoomBtn.addEventListener('click', resetChartZoom);
+  if (toggleChartFullscreenBtn) toggleChartFullscreenBtn.addEventListener('click', () => toggleChartFullscreen());
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('profileCard')?.classList.contains('profile-expanded')) {
+      toggleChartFullscreen(false);
+    }
   });
 
   // Save button

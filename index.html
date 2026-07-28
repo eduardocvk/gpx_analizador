@@ -30,7 +30,7 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 
 <body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
@@ -150,20 +150,35 @@
         </div>
       </div>
 
-      <!-- Map + Chart Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-        <!-- Map -->
+      <!-- Map + elevation profile -->
+      <div class="space-y-3 md:space-y-4">
         <div class="glass-card p-2 rounded-xl shadow-sm card-hover">
           <div id="map"></div>
         </div>
-        <!-- Chart -->
-        <div class="glass-card p-2 rounded-xl shadow-sm card-hover relative">
-          <div id="chartContainer"></div>
-          <div id="noDataMessage" class="absolute inset-0 flex flex-col items-center justify-center bg-white/90 z-10 rounded-xl">
-            <svg class="w-16 h-16 text-gray-200 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 21l4-7 4 5 4-9 6 11"/>
-            </svg>
-            <p class="text-gray-400 font-bold text-sm">Carga un track para ver la altimetría</p>
+        <div id="profileCard" class="glass-card p-2 rounded-xl shadow-sm card-hover profile-card">
+          <div class="profile-toolbar">
+            <div>
+              <p class="text-xs font-extrabold text-gray-700 uppercase tracking-wide">Perfil altimétrico</p>
+              <p class="text-[10px] text-gray-400">Desliza o pellizca para ampliar · pasa por el perfil para localizarte</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="btnResetChartZoom" type="button" class="profile-tool-btn" title="Restablecer zoom" aria-label="Restablecer zoom">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+              <button id="btnToggleChartFullscreen" type="button" class="profile-tool-btn" title="Ampliar perfil" aria-label="Ampliar perfil">
+                <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+                <svg class="collapse-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v5H3M16 3v5h5M8 21v-5H3M16 21v-5h5"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="profile-chart-stage">
+            <div id="chartContainer"></div>
+            <div id="noDataMessage" class="absolute inset-0 flex flex-col items-center justify-center bg-white/90 z-10 rounded-xl">
+              <svg class="w-16 h-16 text-gray-200 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 21l4-7 4 5 4-9 6 11"/>
+              </svg>
+              <p class="text-gray-400 font-bold text-sm">Carga un track para ver la altimetría</p>
+            </div>
           </div>
         </div>
       </div>
@@ -421,7 +436,7 @@
 
   <!-- App Logic (Cache-busted) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/app.js?v=8"></script>
-  <script src="js/track-creator.js?v=8"></script>
+  <script src="js/app.js?v=9"></script>
+  <script src="js/track-creator.js?v=9"></script>
 </body>
 </html>
