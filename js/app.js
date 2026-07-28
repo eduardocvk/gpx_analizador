@@ -61,29 +61,40 @@ function generateGPXFromPoints(name, points) {
   return xml;
 }
 
+function extractPointsFromGPX(gpxXml) {
+  if (!gpxXml || typeof gpxXml !== 'string') return [];
+  const pts = [];
+  const latRegex = /lat=["']([^"']+)["']/i;
+  const lonRegex = /lon=["']([^"']+)["']/i;
+  const eleRegex = /<ele>([^<]+)<\/ele>/i;
+
+  const trkpts = gpxXml.split(/<\/trkpt>/i);
+  for (const block of trkpts) {
+    const latM = block.match(latRegex);
+    const lonM = block.match(lonRegex);
+    const eleM = block.match(eleRegex);
+    if (latM && lonM) {
+      const lat = parseFloat(latM[1]);
+      const lon = parseFloat(lonM[1]);
+      const ele = eleM ? parseFloat(eleM[1]) : 0;
+      if (!isNaN(lat) && !isNaN(lon)) {
+        pts.push([Number(lat.toFixed(5)), Number(lon.toFixed(5)), Math.round(ele || 0)]);
+      }
+    }
+  }
+  return pts;
+}
+
 function prepareTrackForCloud(t) {
   const copy = { ...t, inCloud: true };
 
-  // If points array is missing or empty, extract from gpxContent
+  // 1. Extract points if missing or empty
   if ((!copy.points || copy.points.length === 0) && copy.gpxContent) {
-    try {
-      const parsed = parseGPX(copy.gpxContent);
-      const rawPts = parsed.puntos || parsed.points;
-      if (rawPts && rawPts.length > 0) {
-        copy.points = rawPts.map(p => [
-          Number((p.lat !== undefined ? p.lat : p[0]).toFixed(5)),
-          Number((p.lon !== undefined ? p.lon : (p.lng !== undefined ? p.lng : p[1])).toFixed(5)),
-          Math.round(p.ele !== undefined ? p.ele : (p[2] || 0))
-        ]);
-      }
-    } catch (e) {
-      console.warn('Could not parse GPX points for cloud sync:', t.id, e);
-    }
+    copy.points = extractPointsFromGPX(copy.gpxContent);
   }
 
-  // Clean up whitespace in gpxContent if present
+  // 2. Clean up whitespace / compress heavy XML
   if (copy.gpxContent && typeof copy.gpxContent === 'string') {
-    // If gpxContent is large (>40KB) and we have points, drop raw XML to keep payload tiny
     if (copy.gpxContent.length > 40000 && copy.points && copy.points.length > 0) {
       delete copy.gpxContent;
     } else {
@@ -252,22 +263,39 @@ async function saveTrackToDB(track) {
 }
 
 async function deleteTrackFromDB(id) {
-  // Delete from local IndexedDB
+  const targetId = (typeof id === 'string' && !isNaN(id)) ? Number(id) : id;
+
+  // 1. Delete from local IndexedDB (try both Number and String key types)
   const db = await openDB();
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).delete(id);
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(targetId);
+    store.delete(String(targetId));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 
-  // Sync updated list to Cloud
+  // 2. Get remaining local tracks
+  const remaining = await getLocalTracks();
+
+  // 3. Overwrite cloud payload with remaining tracks
   try {
-    const remaining = await getLocalTracks();
-    await syncTracksToCloud(remaining);
+    const cloudPayload = remaining.map(t => prepareTrackForCloud(t));
+    await fetch(CLOUD_SYNC_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ tracks: cloudPayload })
+    });
   } catch (e) {
     console.warn('Error syncing deletion to cloud:', e);
   }
+
+  // 4. Re-render table
+  renderHistoryTable(remaining);
 }
 
 
@@ -300,8 +328,8 @@ function parseGPX(text) {
   }
 
   // Get track name
-  const nameTag = xmlDoc.getElementsByTagName('name')[0];
-  const trackName = nameTag ? nameTag.textContent.trim() : (fileName ? fileName.replace('.gpx', '') : 'Sin nombre');
+  const safeFileName = (typeof fileName !== 'undefined' && fileName) ? fileName.replace('.gpx', '') : 'Sin nombre';
+  const trackName = nameTag ? nameTag.textContent.trim() : safeFileName;
 
   let points = [];
   let totalDist = 0;
