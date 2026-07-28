@@ -226,10 +226,34 @@
       <div class="glass-card p-3 md:p-4 rounded-xl shadow-sm">
         <div class="flex flex-wrap gap-3 md:gap-4 items-end justify-between">
           <!-- Track Name -->
-          <div class="w-full sm:w-48">
+          <div class="w-full sm:w-44">
             <label for="creatorTrackName" class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wider">Nombre del track</label>
             <input type="text" id="creatorTrackName" placeholder="Mi ruta..." 
               class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+          </div>
+
+          <!-- Location Search -->
+          <div class="relative w-full sm:w-56">
+            <label for="locationSearch" class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wider">🔍 Buscar lugar inicio</label>
+            <div class="relative flex items-center">
+              <input type="text" id="locationSearch" placeholder="Ej: Cercedilla, Navacerrada..." 
+                autocomplete="off"
+                class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-3 pr-14 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+              <div id="searchSpinner" class="hidden absolute right-8 top-2.5">
+                <svg class="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <button id="btnGeolocate" class="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-blue-600 transition-colors rounded-md" title="Usar mi ubicación actual (GPS)">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+              </button>
+            </div>
+            <!-- Search Results Dropdown -->
+            <div id="searchResults" class="hidden absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-100 z-[1050] max-h-60 overflow-y-auto divide-y divide-gray-100 text-xs"></div>
           </div>
 
           <!-- Mode Toggle -->

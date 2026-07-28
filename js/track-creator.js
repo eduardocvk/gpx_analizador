@@ -119,6 +119,10 @@ function setupCreatorEvents() {
     });
   }
 
+  // Location search & Geolocation
+  setupLocationSearch();
+  document.getElementById('btnGeolocate')?.addEventListener('click', geolocateUser);
+
   // Buttons
   document.getElementById('btnUndo')?.addEventListener('click', undoLastAction);
   document.getElementById('btnReturnToStart')?.addEventListener('click', returnToStart);
@@ -136,6 +140,148 @@ function setupCreatorEvents() {
       }
     }
   });
+}
+
+// =============================================
+// LOCATION SEARCH & GEOLOCATION
+// =============================================
+
+let searchDebounceTimeout = null;
+
+function setupLocationSearch() {
+  const searchInput = document.getElementById('locationSearch');
+  const resultsContainer = document.getElementById('searchResults');
+
+  if (!searchInput || !resultsContainer) return;
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimeout);
+    const query = searchInput.value.trim();
+
+    if (query.length < 2) {
+      resultsContainer.classList.add('hidden');
+      resultsContainer.innerHTML = '';
+      return;
+    }
+
+    searchDebounceTimeout = setTimeout(() => {
+      performLocationSearch(query);
+    }, 350);
+  });
+
+  // Hide dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !resultsContainer.contains(e.target)) {
+      resultsContainer.classList.add('hidden');
+    }
+  });
+}
+
+async function performLocationSearch(query) {
+  const searchInput = document.getElementById('locationSearch');
+  const resultsContainer = document.getElementById('searchResults');
+  const spinner = document.getElementById('searchSpinner');
+
+  if (spinner) spinner.classList.remove('hidden');
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: { 'Accept-Language': 'es' }
+    });
+    const data = await res.json();
+
+    if (spinner) spinner.classList.add('hidden');
+
+    if (!data || data.length === 0) {
+      resultsContainer.innerHTML = `<div class="p-3 text-gray-400 font-medium">No se encontraron resultados</div>`;
+      resultsContainer.classList.remove('hidden');
+      return;
+    }
+
+    resultsContainer.innerHTML = '';
+    data.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'p-2.5 hover:bg-blue-50 cursor-pointer font-medium text-gray-700 transition-colors flex items-center gap-2';
+      div.innerHTML = `
+        <svg class="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="truncate">${escapeCreatorHtml(item.display_name)}</span>
+      `;
+
+      div.addEventListener('click', () => {
+        const lat = parseFloat(item.lat);
+        const lon = parseFloat(item.lon);
+
+        if (creator.map) {
+          creator.map.flyTo([lat, lon], 14, { duration: 1.5 });
+
+          // Temporary search highlight marker
+          if (window._searchMarker) creator.map.removeLayer(window._searchMarker);
+          window._searchMarker = L.circleMarker([lat, lon], {
+            radius: 10,
+            color: '#3b82f6',
+            fillColor: '#60a5fa',
+            fillOpacity: 0.6,
+            weight: 3
+          }).addTo(creator.map);
+
+          setTimeout(() => {
+            if (window._searchMarker) {
+              creator.map.removeLayer(window._searchMarker);
+              window._searchMarker = null;
+            }
+          }, 4000);
+        }
+
+        searchInput.value = item.display_name.split(',')[0];
+        resultsContainer.classList.add('hidden');
+      });
+
+      resultsContainer.appendChild(div);
+    });
+
+    resultsContainer.classList.remove('hidden');
+  } catch (err) {
+    console.error('Search error:', err);
+    if (spinner) spinner.classList.add('hidden');
+    resultsContainer.innerHTML = `<div class="p-3 text-red-500 font-medium">Error al buscar</div>`;
+    resultsContainer.classList.remove('hidden');
+  }
+}
+
+function geolocateUser() {
+  if (!navigator.geolocation) {
+    alert('Tu navegador no soporta geolocalización.');
+    return;
+  }
+
+  const spinner = document.getElementById('searchSpinner');
+  if (spinner) spinner.classList.remove('hidden');
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      if (spinner) spinner.classList.add('hidden');
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      if (creator.map) {
+        creator.map.flyTo([lat, lon], 15, { duration: 1.5 });
+      }
+    },
+    (err) => {
+      if (spinner) spinner.classList.add('hidden');
+      alert('No se pudo obtener la ubicación: ' + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function escapeCreatorHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 
