@@ -38,7 +38,7 @@ async function saveTrackToDB(track) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    const req = tx.objectStore(STORE_NAME).add(track);
+    const req = tx.objectStore(STORE_NAME).put(track);
     req.onsuccess = () => resolve(req.result);
     tx.onerror = () => reject(tx.error);
   });
@@ -467,7 +467,10 @@ async function loadHistory() {
         <td class="px-4 py-3 whitespace-nowrap text-right text-emerald-600 font-bold tabular-nums">${t.desnivelPositivo} m</td>
         <td class="px-4 py-3 whitespace-nowrap text-center">
           <div class="flex items-center justify-center gap-1">
-            <button class="btn-reanalyze p-1.5 text-gray-300 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50" title="Analizar de nuevo">
+            <button class="btn-edit p-1.5 text-gray-300 hover:text-amber-600 transition-colors rounded-lg hover:bg-amber-50" title="Editar track en el creador">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+            <button class="btn-reanalyze p-1.5 text-gray-300 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50" title="Analizar altimetría">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             </button>
             <button class="btn-download p-1.5 text-gray-300 hover:text-emerald-600 transition-colors rounded-lg hover:bg-emerald-50" title="Descargar GPX">
@@ -481,8 +484,16 @@ async function loadHistory() {
 
       // Click row to re-analyze
       tr.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze')) return;
+        if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit')) return;
         reanalyzeTrack(t);
+      });
+
+      // Edit button
+      tr.querySelector('.btn-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof editTrackInCreator === 'function') {
+          editTrackInCreator(t);
+        }
       });
 
       // Re-analyze button

@@ -21,6 +21,7 @@ const creator = {
   undoStack: [],                  // Each entry: { waypoints, routeSegments } snapshot
   totalDistance: 0,
   elevationGain: 0,
+  editingTrackId: null,           // Preserved track ID when editing an existing track
   isRouting: false                // Prevent double-clicks while routing
 };
 
@@ -805,6 +806,7 @@ function clearCreatedTrack() {
 
   creator.waypoints = [];
   creator.routeSegments = [];
+  creator.editingTrackId = null;
 
   // Remove all from map
   creator.markers.forEach(m => creator.map.removeLayer(m));
@@ -820,6 +822,135 @@ function clearCreatedTrack() {
   }
 
   updateCreatorStats();
+}
+
+async function saveCreatedTrack() {
+  if (creator.waypoints.length < 2) return;
+
+  const nameInput = document.getElementById('creatorTrackName');
+  const name = (nameInput?.value || '').trim() || 'Track creado ' + new Date().toLocaleDateString('es-ES');
+
+  const gpxContent = generateCreatorGPX(name);
+  if (!gpxContent) return;
+
+  const btn = document.getElementById('btnSaveCreated');
+  const statusEl = document.getElementById('creatorSaveStatus');
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.className = 'text-xs font-bold text-blue-600 animate-pulse';
+    statusEl.textContent = 'Guardando...';
+  }
+
+  try {
+    // Parse the generated GPX to get stats (reuse global parseGPX)
+    const parsed = parseGPX(gpxContent);
+
+    const trackData = {
+      fecha: new Date().toISOString(),
+      nombre: parsed.nombre,
+      distancia: parsed.distancia,
+      desnivelPositivo: parsed.desnivelPositivo,
+      desnivelNegativo: parsed.desnivelNegativo,
+      altitudMax: parsed.altitudMax,
+      altitudMin: parsed.altitudMin,
+      gpxContent: gpxContent
+    };
+
+    // If editing an existing track, include its ID to update it
+    if (creator.editingTrackId) {
+      trackData.id = creator.editingTrackId;
+    }
+
+    await saveTrackToDB(trackData);
+
+    if (statusEl) {
+      statusEl.className = 'text-xs font-bold text-green-600';
+      statusEl.textContent = creator.editingTrackId ? '✓ Track actualizado' : '✓ Guardado en Mis Tracks';
+      setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    }
+    btn.disabled = false;
+  } catch (err) {
+    console.error('Save error:', err);
+    if (statusEl) {
+      statusEl.className = 'text-xs font-bold text-red-600';
+      statusEl.textContent = '✕ Error al guardar';
+    }
+    btn.disabled = false;
+  }
+}
+
+// =============================================
+// 12. EDIT EXISTING SAVED TRACK
+// =============================================
+
+function editTrackInCreator(track) {
+  try {
+    const parsed = parseGPX(track.gpxContent);
+    if (!parsed.puntos || parsed.puntos.length === 0) {
+      alert('El track no contiene puntos válidos');
+      return;
+    }
+
+    if (!creator.initialized) {
+      initCreator();
+    }
+
+    // Reset creator state for editing
+    creator.waypoints = [];
+    creator.routeSegments = [];
+    creator.undoStack = [];
+    creator.editingTrackId = track.id;
+
+    const points = parsed.puntos;
+
+    // Select waypoints: start, end, and downsampled interior points if large
+    let selectedWaypoints = [];
+    if (points.length <= 60) {
+      selectedWaypoints = points.map(p => L.latLng(p.lat, p.lon));
+    } else {
+      const step = Math.ceil(points.length / 30);
+      selectedWaypoints.push(L.latLng(points[0].lat, points[0].lon));
+      for (let i = step; i < points.length - 1; i += step) {
+        selectedWaypoints.push(L.latLng(points[i].lat, points[i].lon));
+      }
+      selectedWaypoints.push(L.latLng(points[points.length - 1].lat, points[points.length - 1].lon));
+    }
+
+    creator.waypoints = selectedWaypoints;
+
+    // Build segments between waypoints from original detailed points
+    creator.routeSegments = [];
+    for (let i = 0; i < selectedWaypoints.length - 1; i++) {
+      const wpA = selectedWaypoints[i];
+      const wpB = selectedWaypoints[i + 1];
+
+      let idxA = points.findIndex(p => p.lat === wpA.lat && p.lon === wpA.lng);
+      let idxB = points.findIndex(p => p.lat === wpB.lat && p.lon === wpB.lng);
+      if (idxA === -1) idxA = 0;
+      if (idxB === -1 || idxB <= idxA) idxB = points.length - 1;
+
+      const segPoints = points.slice(idxA, idxB + 1).map(p => [p.lat, p.lon, p.ele || 0]);
+      creator.routeSegments.push(segPoints.length > 0 ? segPoints : [[wpA.lat, wpA.lng, 0], [wpB.lat, wpB.lng, 0]]);
+    }
+
+    const nameInput = document.getElementById('creatorTrackName');
+    if (nameInput) nameInput.value = track.nombre;
+
+    rebuildAllMarkers();
+    rebuildPolyline();
+    updateMidpoints();
+    updateCreatorStats();
+
+    if (creator.polyline && creator.map) {
+      creator.map.fitBounds(creator.polyline.getBounds(), { padding: [30, 30] });
+    }
+
+    switchToTab('crear');
+
+  } catch (err) {
+    console.error('Error opening track for editing:', err);
+    alert('Error al abrir el track para editar: ' + err.message);
+  }
 }
 
 
