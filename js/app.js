@@ -592,12 +592,23 @@ function renderHistoryTable(tracks) {
   });
 }
 
+function mergeTracks(localList, cloudList) {
+  const trackMap = new Map();
+  (localList || []).forEach(t => { if (t && t.id) trackMap.set(t.id, t); });
+  (cloudList || []).forEach(t => { if (t && t.id) trackMap.set(t.id, t); });
+
+  const merged = Array.from(trackMap.values());
+  merged.sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
+  return merged;
+}
+
 async function loadHistory() {
   const syncStatus = document.getElementById('cloudSyncStatus');
 
   // 1. Instantly render local tracks first (0 delay!)
+  let localTracks = [];
   try {
-    const localTracks = await getLocalTracks();
+    localTracks = await getLocalTracks();
     renderHistoryTable(localTracks);
   } catch (err) {
     console.warn('Error loading local tracks:', err);
@@ -614,14 +625,23 @@ async function loadHistory() {
       <span>Sincronizando...</span>`;
   }
 
-  // 3. Fetch cloud tracks in background
+  // 3. Fetch cloud tracks in background and MERGE
   try {
     const cloudTracks = await getCloudTracks();
     if (cloudTracks !== null) {
-      for (const t of cloudTracks) {
+      const mergedTracks = mergeTracks(localTracks, cloudTracks);
+
+      for (const t of mergedTracks) {
         if (t && t.id) await saveTrackToLocalDB(t);
       }
-      renderHistoryTable(cloudTracks);
+
+      // Sync combined list to cloud if local had new tracks
+      if (mergedTracks.length > (cloudTracks ? cloudTracks.length : 0)) {
+        await syncTracksToCloud(mergedTracks);
+      }
+
+      renderHistoryTable(mergedTracks);
+
       if (syncStatus) {
         syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
         syncStatus.innerHTML = `<span>☁️ Sincronizado</span>`;
