@@ -21,7 +21,40 @@ let deferredPrompt = null;
 // CLOUD SYNC & DATABASE (IndexedDB + Cloud JSON)
 // =============================================
 
-const CLOUD_SYNC_URL = 'https://jsonblob.com/api/jsonBlob/019fa81c-49e9-74ad-b47a-76d7a51000c1';
+let DEFAULT_CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019fa81c-49e9-74ad-b47a-76d7a51000c1';
+
+function getCloudSyncUrl() {
+  return localStorage.getItem('gpx_cloud_url') || DEFAULT_CLOUD_URL;
+}
+
+function setCloudSyncUrl(url) {
+  if (url) localStorage.setItem('gpx_cloud_url', url);
+}
+
+async function createFreshCloudBlob(initialTracks = []) {
+  try {
+    const payload = (initialTracks || []).map(t => prepareTrackForCloud(t));
+    const res = await fetch('https://jsonblob.com/api/jsonBlob', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ tracks: payload })
+    });
+    if (res.status === 201 || res.ok) {
+      const loc = res.headers.get('location');
+      if (loc) {
+        const fullUrl = loc.startsWith('http') ? loc : ('https://jsonblob.com' + loc);
+        setCloudSyncUrl(fullUrl);
+        return fullUrl;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not create fresh blob:', e);
+  }
+  return null;
+}
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -33,7 +66,7 @@ function openDB() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(tx.error);
   });
 }
 
@@ -128,7 +161,8 @@ function restoreCloudTrack(t) {
 
 async function getCloudTracks() {
   try {
-    const res = await fetch(CLOUD_SYNC_URL + '?t=' + Date.now(), {
+    const targetUrl = getCloudSyncUrl();
+    const res = await fetch(targetUrl + (targetUrl.includes('?') ? '&' : '?') + 't=' + Date.now(), {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       cache: 'no-store'
@@ -150,8 +184,9 @@ async function syncTracksToCloud(tracksArray) {
 
   try {
     const cloudPayload = tracksArray.map(t => prepareTrackForCloud(t));
+    let targetUrl = getCloudSyncUrl();
 
-    const res = await fetch(CLOUD_SYNC_URL, {
+    let res = await fetch(targetUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -159,6 +194,33 @@ async function syncTracksToCloud(tracksArray) {
       },
       body: JSON.stringify({ tracks: cloudPayload })
     });
+
+    // Handle HTTP 429 Rate Limit Exceeded
+    if (res.status === 429) {
+      console.warn('HTTP 429 Rate Limited. Waiting 1.5 seconds before retry...');
+      await new Promise(r => setTimeout(r, 1500));
+
+      res = await fetch(targetUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ tracks: cloudPayload })
+      });
+
+      // If still 429, auto-create a dedicated fresh cloud storage blob URL
+      if (res.status === 429) {
+        console.warn('HTTP 429 persists. Creating dedicated cloud blob URL...');
+        const newUrl = await createFreshCloudBlob(tracksArray);
+        if (newUrl) {
+          for (const t of tracksArray) {
+            if (t && t.id) await saveTrackToLocalDB({ ...t, inCloud: true });
+          }
+          return { ok: true };
+        }
+      }
+    }
 
     if (res.ok) {
       for (const t of tracksArray) {
