@@ -616,6 +616,35 @@ function renderChart() {
     color: getSlopeColor(segment.slope)
   }));
 
+  const slopeMarkAreas = slopeSegments.map((segment, index) => {
+    const previousSlope = slopeSegments[index - 1]?.slope ?? -Infinity;
+    const nextSlope = slopeSegments[index + 1]?.slope ?? -Infinity;
+    // Label only the local peak of a hard section so percentages stay legible.
+    const showHardPeak = segment.slope >= 10 && segment.slope > previousSlope && segment.slope >= nextSlope;
+
+    return [
+      {
+        xAxis: segment.start,
+        itemStyle: {
+          color: getSlopeColor(segment.slope),
+          opacity: 0.14
+        },
+        label: {
+          show: showHardPeak,
+          formatter: `${segment.slope.toFixed(1)}%`,
+          position: 'insideTop',
+          color: '#7f1d1d',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          borderRadius: 4,
+          padding: [2, 4],
+          fontSize: 9,
+          fontWeight: 800
+        }
+      },
+      { xAxis: segment.end }
+    ];
+  });
+
   let segmentIndex = 0;
   const chartData = points.map(p => {
     while (segmentIndex < slopeSegments.length - 1 && p.distance > slopeSegments[segmentIndex].end) {
@@ -715,6 +744,10 @@ function renderChart() {
             { offset: 0, color: 'rgba(16, 185, 129, 0.38)' },
             { offset: 1, color: 'rgba(16, 185, 129, 0.02)' }
           ])
+        },
+        markArea: {
+          silent: true,
+          data: slopeMarkAreas
         }
       },
       {
