@@ -3,6 +3,8 @@
 // Draws tracks on the map (manual or road-following)
 // =============================================
 
+const DEFAULT_ORS_KEY = '5b3ce3597851110001cf62485303dfb3a98544d6a13d3d664c39833e';
+
 // --- Creator State ---
 const creator = {
   map: null,
@@ -10,7 +12,7 @@ const creator = {
   initialized: false,
   mode: 'road',                   // 'manual' | 'road'
   profile: 'cycling-road',
-  apiKey: '',
+  apiKey: DEFAULT_ORS_KEY,
   waypoints: [],                  // [{lat, lng}] user-placed points
   routeSegments: [],              // Arrays of [lat, lng, ele] between waypoints
   polyline: null,
@@ -35,10 +37,8 @@ function initCreator() {
     return;
   }
 
-  // Load API key from localStorage
-  creator.apiKey = localStorage.getItem('ors-api-key') || '';
-  const keyInput = document.getElementById('orsApiKey');
-  if (keyInput) keyInput.value = creator.apiKey;
+  // Load API key from localStorage or use built-in key
+  creator.apiKey = localStorage.getItem('ors-api-key') || DEFAULT_ORS_KEY;
 
   // Init map
   creator.map = L.map('mapCrear', {
@@ -95,10 +95,8 @@ function setupCreatorEvents() {
   if (modeToggle) {
     modeToggle.addEventListener('change', () => {
       creator.mode = modeToggle.checked ? 'road' : 'manual';
-      document.getElementById('profileSelector').style.display =
-        creator.mode === 'road' ? 'inline-block' : 'none';
-      document.getElementById('apiKeyGroup').style.display =
-        creator.mode === 'road' ? 'flex' : 'none';
+      const profSelector = document.getElementById('profileSelector');
+      if (profSelector) profSelector.style.display = creator.mode === 'road' ? 'inline-block' : 'none';
     });
   }
 
@@ -107,15 +105,6 @@ function setupCreatorEvents() {
   if (profileSelect) {
     profileSelect.addEventListener('change', () => {
       creator.profile = profileSelect.value;
-    });
-  }
-
-  // API key input
-  const keyInput = document.getElementById('orsApiKey');
-  if (keyInput) {
-    keyInput.addEventListener('input', () => {
-      creator.apiKey = keyInput.value.trim();
-      localStorage.setItem('ors-api-key', creator.apiKey);
     });
   }
 
@@ -305,12 +294,7 @@ async function addWaypoint(latlng) {
   const prevWp = creator.waypoints[creator.waypoints.length - 2];
 
   if (creator.mode === 'road') {
-    if (!creator.apiKey) {
-      alert('Introduce una API key de OpenRouteService para usar el modo carretera.');
-      creator.waypoints.pop();
-      creator.undoStack.pop();
-      return;
-    }
+    creator.apiKey = creator.apiKey || DEFAULT_ORS_KEY;
 
     creator.isRouting = true;
     showRoutingSpinner(true);
