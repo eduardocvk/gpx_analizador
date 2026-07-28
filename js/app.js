@@ -18,42 +18,87 @@ let deferredPrompt = null;
 
 // =============================================
 // =============================================
-// CLOUD SYNC & DATABASE (IndexedDB + Cloud JSON)
+// CLOUD SYNC & DATABASE (IndexedDB + Supabase)
 // =============================================
 
-let DEFAULT_CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019fa81c-49e9-74ad-b47a-76d7a51000c1';
+const SUPABASE_URL = 'https://ketihpjheglbplwdswfq.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_G9meSMRexP5YKaam18BbPA_E9eyOxNr';
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) || null;
+let cloudSession = null;
 
-function getCloudSyncUrl() {
-  return localStorage.getItem('gpx_cloud_url') || DEFAULT_CLOUD_URL;
+function updateCloudAccountUI() {
+  const signedOutPanel = document.getElementById('cloudSignedOut');
+  const signedInPanel = document.getElementById('cloudSignedIn');
+  const accountEmail = document.getElementById('cloudAccountEmail');
+  const forceSyncBtn = document.getElementById('btnForceSync');
+  const isSignedIn = Boolean(cloudSession?.user);
+
+  signedOutPanel?.classList.toggle('hidden', isSignedIn);
+  signedInPanel?.classList.toggle('hidden', !isSignedIn);
+  if (accountEmail) accountEmail.textContent = cloudSession?.user?.email || '';
+  if (forceSyncBtn) forceSyncBtn.disabled = !isSignedIn;
 }
 
-function setCloudSyncUrl(url) {
-  if (url) localStorage.setItem('gpx_cloud_url', url);
-}
-
-async function createFreshCloudBlob(initialTracks = []) {
-  try {
-    const payload = (initialTracks || []).map(t => prepareTrackForCloud(t));
-    const res = await fetch('https://jsonblob.com/api/jsonBlob', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ tracks: payload })
-    });
-    if (res.status === 201 || res.ok) {
-      const loc = res.headers.get('location');
-      if (loc) {
-        const fullUrl = loc.startsWith('http') ? loc : ('https://jsonblob.com' + loc);
-        setCloudSyncUrl(fullUrl);
-        return fullUrl;
-      }
-    }
-  } catch (e) {
-    console.warn('Could not create fresh blob:', e);
+async function initializeCloudAuth() {
+  localStorage.removeItem('gpx_cloud_url');
+  if (!supabaseClient) {
+    updateCloudAccountUI();
+    const message = document.getElementById('cloudAuthMessage');
+    if (message) message.textContent = 'La nube no está disponible sin conexión.';
+    return;
   }
-  return null;
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) console.warn('Could not restore Supabase session:', error.message);
+  cloudSession = data?.session || null;
+  updateCloudAccountUI();
+
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    cloudSession = session;
+    updateCloudAccountUI();
+    setTimeout(() => loadHistory(), 0);
+  });
+}
+
+async function sendCloudMagicLink() {
+  const emailInput = document.getElementById('cloudEmail');
+  const message = document.getElementById('cloudAuthMessage');
+  if (!supabaseClient) {
+    if (message) message.textContent = 'Conéctate a Internet para acceder a la nube.';
+    return;
+  }
+  const email = (emailInput?.value || '').trim();
+  if (!email || !email.includes('@')) {
+    if (message) {
+      message.className = 'text-xs font-bold text-red-600';
+      message.textContent = 'Introduce un correo válido.';
+    }
+    return;
+  }
+
+  if (message) {
+    message.className = 'text-xs font-bold text-blue-600 animate-pulse';
+    message.textContent = 'Enviando enlace seguro...';
+  }
+
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: redirectTo }
+  });
+
+  if (message) {
+    message.className = error ? 'text-xs font-bold text-red-600' : 'text-xs font-bold text-emerald-600';
+    message.textContent = error
+      ? `No se pudo enviar: ${error.message}`
+      : 'Revisa tu correo y abre el enlace para conectar este dispositivo.';
+  }
+}
+
+async function signOutFromCloud() {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.auth.signOut();
+  if (error) alert(`No se pudo cerrar la sesión: ${error.message}`);
 }
 
 function openDB() {
@@ -66,7 +111,7 @@ function openDB() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(tx.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
@@ -121,27 +166,11 @@ function extractPointsFromGPX(gpxXml) {
 function prepareTrackForCloud(t) {
   const copy = { ...t, inCloud: true };
 
-  // 1. Extract points if missing or empty
-  if ((!copy.points || copy.points.length === 0) && copy.gpxContent) {
-    copy.points = extractPointsFromGPX(copy.gpxContent);
+  // Supabase can store the original GPX, so cross-device downloads keep every point.
+  // The parsed `puntos` array is redundant and much heavier than the source XML.
+  if (!copy.gpxContent && (!copy.points || copy.points.length === 0) && Array.isArray(copy.puntos)) {
+    copy.points = copy.puntos.map(p => [p.lat, p.lon, p.ele || 0]);
   }
-
-  // 2. Downsample points if larger than 1500 points to keep payload <30KB per track
-  if (copy.points && copy.points.length > 1500) {
-    const step = Math.ceil(copy.points.length / 1500);
-    const sampled = [];
-    for (let i = 0; i < copy.points.length; i += step) {
-      sampled.push(copy.points[i]);
-    }
-    const last = copy.points[copy.points.length - 1];
-    if (sampled[sampled.length - 1] !== last) {
-      sampled.push(last);
-    }
-    copy.points = sampled;
-  }
-
-  // 3. Always drop heavy raw gpxContent XML string from cloud HTTP payload to guarantee payload <100KB
-  delete copy.gpxContent;
   delete copy.puntos;
   return copy;
 }
@@ -160,83 +189,60 @@ function restoreCloudTrack(t) {
 }
 
 async function getCloudTracks() {
-  try {
-    const targetUrl = getCloudSyncUrl();
-    const res = await fetch(targetUrl + (targetUrl.includes('?') ? '&' : '?') + 't=' + Date.now(), {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      cache: 'no-store'
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data.tracks)) return null;
+  if (!supabaseClient || !cloudSession?.user) return null;
 
-    // Restore full track objects with generated GPX XML content
-    return data.tracks.map(t => restoreCloudTrack(t));
+  try {
+    const { data, error } = await supabaseClient
+      .from('tracks')
+      .select('data, updated_at')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(row => restoreCloudTrack({
+      ...(row.data || {}),
+      updatedAt: row.data?.updatedAt || row.updated_at
+    }));
   } catch (err) {
-    console.warn('Cloud sync fetch warning:', err);
+    console.warn('Supabase fetch warning:', err);
     return null;
   }
 }
 
 async function syncTracksToCloud(tracksArray) {
+  if (!supabaseClient || !cloudSession?.user) {
+    return { ok: false, signedOut: true, message: 'Inicia sesión para sincronizar.' };
+  }
   if (!tracksArray || tracksArray.length === 0) return { ok: true };
 
   try {
-    const cloudPayload = tracksArray.map(t => prepareTrackForCloud(t));
-    let targetUrl = getCloudSyncUrl();
+    const now = new Date().toISOString();
+    const rows = tracksArray
+      .filter(t => t?.id !== undefined && t?.id !== null)
+      .map(t => ({
+        user_id: cloudSession.user.id,
+        id: String(t.id),
+        data: prepareTrackForCloud({
+          ...t,
+          updatedAt: t.updatedAt || t.fecha || now
+        }),
+        updated_at: t.updatedAt || t.fecha || now
+      }));
 
-    let res = await fetch(targetUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ tracks: cloudPayload })
-    });
+    const { error } = await supabaseClient
+      .from('tracks')
+      .upsert(rows, { onConflict: 'user_id,id' });
 
-    // Handle HTTP 429 Rate Limit Exceeded
-    if (res.status === 429) {
-      console.warn('HTTP 429 Rate Limited. Waiting 1.5 seconds before retry...');
-      await new Promise(r => setTimeout(r, 1500));
+    if (error) throw error;
 
-      res = await fetch(targetUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ tracks: cloudPayload })
-      });
-
-      // If still 429, auto-create a dedicated fresh cloud storage blob URL
-      if (res.status === 429) {
-        console.warn('HTTP 429 persists. Creating dedicated cloud blob URL...');
-        const newUrl = await createFreshCloudBlob(tracksArray);
-        if (newUrl) {
-          for (const t of tracksArray) {
-            if (t && t.id) await saveTrackToLocalDB({ ...t, inCloud: true });
-          }
-          return { ok: true };
-        }
+    for (const t of tracksArray) {
+      if (t?.id !== undefined && t?.id !== null) {
+        await saveTrackToLocalDB({ ...t, inCloud: true });
       }
     }
-
-    if (res.ok) {
-      for (const t of tracksArray) {
-        if (t && t.id) {
-          await saveTrackToLocalDB({ ...t, inCloud: true });
-        }
-      }
-      return { ok: true };
-    } else {
-      const errText = await res.text().catch(() => '');
-      console.error('Cloud sync PUT failed:', res.status, res.statusText, errText);
-      return { ok: false, status: res.status, message: `HTTP ${res.status}: ${res.statusText || 'Error en el servidor'}` };
-    }
+    return { ok: true };
   } catch (err) {
-    console.error('Cloud sync save error:', err);
-    return { ok: false, message: err.message || 'Error de conexión' };
+    console.error('Supabase save error:', err);
+    return { ok: false, message: err.message || 'Error de conexión con Supabase' };
   }
 }
 
@@ -251,6 +257,11 @@ async function forceSyncAllToCloud() {
   }
 
   try {
+    if (!cloudSession?.user) {
+      document.getElementById('cloudEmail')?.focus();
+      throw new Error('Inicia sesión con tu correo antes de subir los tracks.');
+    }
+
     const localTracks = await getLocalTracks();
     const cloudTracks = await getCloudTracks();
     const mergedTracks = mergeTracks(localTracks, cloudTracks || []);
@@ -318,17 +329,19 @@ async function saveTrackToDB(track) {
   if (!track.id) {
     track.id = Date.now() + Math.floor(Math.random() * 1000);
   }
+  track.updatedAt = new Date().toISOString();
 
   // Save to local IndexedDB
   await saveTrackToLocalDB(track);
 
-  // Sync current list of tracks to Cloud
-  try {
+  // Sync current list when the user has connected this device.
+  if (cloudSession?.user) {
     const allLocal = await getLocalTracks();
-    await syncTracksToCloud(allLocal);
-  } catch (e) {
-    console.warn('Error pushing to cloud sync:', e);
+    const result = await syncTracksToCloud(allLocal);
+    if (!result.ok) throw new Error(result.message || 'No se pudo sincronizar');
   }
+
+  return { cloudSaved: Boolean(cloudSession?.user) };
 }
 
 async function deleteTrackFromDB(id) {
@@ -345,25 +358,18 @@ async function deleteTrackFromDB(id) {
     tx.onerror = () => reject(tx.error);
   });
 
-  // 2. Get remaining local tracks
+  // 2. Delete the same track in Supabase. Other cloud tracks are untouched.
   const remaining = await getLocalTracks();
 
-  // 3. Overwrite cloud payload with remaining tracks
-  try {
-    const cloudPayload = remaining.map(t => prepareTrackForCloud(t));
-    await fetch(CLOUD_SYNC_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ tracks: cloudPayload })
-    });
-  } catch (e) {
-    console.warn('Error syncing deletion to cloud:', e);
+  if (cloudSession?.user) {
+    const { error } = await supabaseClient
+      .from('tracks')
+      .delete()
+      .eq('id', String(id));
+    if (error) throw error;
   }
 
-  // 4. Re-render table
+  // 3. Re-render table
   renderHistoryTable(remaining);
 }
 
@@ -686,7 +692,7 @@ async function saveCurrentTrack() {
   status.textContent = 'Guardando...';
 
   try {
-    await saveTrackToDB({
+    const saveResult = await saveTrackToDB({
       fecha: new Date().toISOString(),
       nombre: parsedData.nombre,
       distancia: parsedData.distancia,
@@ -700,7 +706,7 @@ async function saveCurrentTrack() {
     await loadHistory();
 
     status.className = 'text-xs font-bold text-green-600 h-4';
-    status.textContent = '✓ Guardado';
+    status.textContent = saveResult.cloudSaved ? '✓ Guardado en la nube' : '✓ Guardado local';
   } catch (err) {
     status.className = 'text-xs font-bold text-red-600 h-4';
     status.textContent = '✕ Error';
@@ -832,11 +838,19 @@ function renderHistoryTable(tracks) {
 
 function mergeTracks(localList, cloudList) {
   const trackMap = new Map();
-  (localList || []).forEach(t => { if (t && t.id) trackMap.set(t.id, t); });
+  (localList || []).forEach(t => {
+    if (t?.id !== undefined && t?.id !== null) trackMap.set(String(t.id), t);
+  });
   (cloudList || []).forEach(t => { 
-    if (t && t.id) {
-      const existing = trackMap.get(t.id);
-      trackMap.set(t.id, { ...(existing || {}), ...t, inCloud: true });
+    if (t?.id !== undefined && t?.id !== null) {
+      const key = String(t.id);
+      const existing = trackMap.get(key);
+      const localTime = new Date(existing?.updatedAt || existing?.fecha || 0).getTime();
+      const cloudTime = new Date(t.updatedAt || t.fecha || 0).getTime();
+      const newest = !existing || cloudTime >= localTime
+        ? { ...(existing || {}), ...t }
+        : { ...t, ...existing };
+      trackMap.set(key, { ...newest, inCloud: true });
     }
   });
 
@@ -1036,8 +1050,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   initChart();
 
-  // Background auto-sync history
-  setTimeout(() => loadHistory(), 300);
+  // Restore the Supabase session before the first cloud sync.
+  initializeCloudAuth()
+    .then(() => loadHistory())
+    .catch(err => {
+      console.warn('Cloud auth initialization error:', err);
+      loadHistory();
+    });
 
   // File input
   document.getElementById('gpxFile').addEventListener('change', handleFileSelect);
@@ -1053,6 +1072,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Force sync button
   const forceSyncBtn = document.getElementById('btnForceSync');
   if (forceSyncBtn) forceSyncBtn.addEventListener('click', forceSyncAllToCloud);
+
+  const cloudLoginBtn = document.getElementById('btnCloudLogin');
+  const cloudLogoutBtn = document.getElementById('btnCloudLogout');
+  const cloudEmail = document.getElementById('cloudEmail');
+  if (cloudLoginBtn) cloudLoginBtn.addEventListener('click', sendCloudMagicLink);
+  if (cloudLogoutBtn) cloudLogoutBtn.addEventListener('click', signOutFromCloud);
+  if (cloudEmail) cloudEmail.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendCloudMagicLink();
+  });
 
   // Tab navigation
   document.getElementById('tabAnalizar').addEventListener('click', () => switchToTab('analizar'));

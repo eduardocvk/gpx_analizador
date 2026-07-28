@@ -185,11 +185,39 @@
     <!-- ===== HISTORY VIEW ===== -->
     <section id="vistaHistorial" class="hidden space-y-3 md:space-y-4 fade-in">
 
+      <div class="glass-card p-3 rounded-xl shadow-sm">
+        <div id="cloudSignedOut" class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-extrabold text-gray-900">Sincroniza tus tracks entre dispositivos</p>
+            <p class="text-xs text-gray-500 mt-0.5">Recibe un enlace seguro por correo. No necesitas contraseña.</p>
+          </div>
+          <div class="w-full md:w-auto">
+            <div class="flex gap-2">
+              <input id="cloudEmail" type="email" autocomplete="email" placeholder="tu@email.com"
+                class="min-w-0 flex-1 md:w-64 bg-white border border-gray-200 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+              <button id="btnCloudLogin" class="shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-lg transition-colors btn-press">
+                Conectar nube
+              </button>
+            </div>
+            <p id="cloudAuthMessage" class="text-xs font-bold mt-1.5"></p>
+          </div>
+        </div>
+        <div id="cloudSignedIn" class="hidden flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="text-sm font-extrabold text-emerald-700">☁️ Nube conectada</p>
+            <p id="cloudAccountEmail" class="text-xs text-gray-500"></p>
+          </div>
+          <button id="btnCloudLogout" class="text-xs font-bold text-gray-500 hover:text-red-600 px-2 py-1 rounded transition-colors">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+
       <div class="flex flex-wrap items-center justify-between gap-2 px-1">
         <h2 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Mis Tracks Guardados</h2>
         <div class="flex items-center gap-2">
           <div id="cloudSyncStatus"></div>
-          <button id="btnForceSync" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shadow-sm cursor-pointer" title="Subir todas las rutas locales a la nube">
+          <button id="btnForceSync" disabled class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title="Subir todas las rutas locales a la nube">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
@@ -392,7 +420,8 @@
   </footer>
 
   <!-- App Logic (Cache-busted) -->
-  <script src="js/app.js?v=6"></script>
-  <script src="js/track-creator.js?v=6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/app.js?v=7"></script>
+  <script src="js/track-creator.js?v=7"></script>
 </body>
 </html>

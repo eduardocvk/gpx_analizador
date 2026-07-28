@@ -1,9 +1,3 @@
-# Apps Script legacy files
-.clasp.json
-appsscript.json
-Code.js
-Indexold.html
-
 # OS files
 .DS_Store
 Thumbs.db

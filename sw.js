@@ -3,7 +3,7 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v6';
+const CACHE_NAME = 'gpx-tracker-v7';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
 const MAX_TILES = 500;
 
@@ -11,14 +11,15 @@ const APP_SHELL = [
   './',
   './index.html',
   './css/style.css',
-  './js/app.js?v=6',
-  './js/track-creator.js?v=6',
+  './js/app.js?v=7',
+  './js/track-creator.js?v=7',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
   'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4',
   'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
@@ -46,7 +47,7 @@ self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
   // Bypass Service Worker cache completely for cloud API requests and dynamic data
-  if (url.includes('jsonblob.com') || url.includes('openrouteservice.org') || url.includes('nominatim.openstreetmap.org')) {
+  if (url.includes('.supabase.co') || url.includes('openrouteservice.org') || url.includes('nominatim.openstreetmap.org')) {
     event.respondWith(fetch(event.request));
     return;
   }

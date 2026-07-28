@@ -7,7 +7,8 @@ Analizador de rutas GPX con mapas interactivos y perfiles altimétricos coloread
 - 📂 **Carga de archivos GPX** desde el dispositivo
 - 🗺️ **Mapa interactivo** (OpenStreetMap + Leaflet)
 - 📊 **Perfil altimétrico** coloreado por pendiente (ECharts)
-- 💾 **Guardado local** de tracks (IndexedDB)
+- 💾 **Guardado local y en la nube** (IndexedDB + Supabase)
+- 🔄 **Sincronización entre móvil y ordenador** mediante acceso seguro por correo
 - 📱 **PWA instalable** en Android, iOS y escritorio
 - 📶 **Funciona offline** (Service Worker)
 
@@ -28,8 +29,11 @@ Analizador de rutas GPX con mapas interactivos y perfiles altimétricos coloread
 - [Leaflet](https://leafletjs.com/) - Mapas
 - [ECharts](https://echarts.apache.org/) - Gráficos
 - [TailwindCSS](https://tailwindcss.com/) - Estilos
-- IndexedDB - Almacenamiento local
+- IndexedDB - Caché local y funcionamiento sin conexión
+- Supabase - Autenticación y almacenamiento sincronizado con RLS
 
 ## Despliegue
 
 Hospedado en GitHub Pages: [https://eduardocvk.github.io/gpx_analizador/](https://eduardocvk.github.io/gpx_analizador/)
+
+La base de datos se versiona mediante las migraciones incluidas en `supabase/migrations`.
