@@ -779,8 +779,30 @@ async function loadHistory() {
   }
 }
 
+function ensureValidGPXContent(track) {
+  if (!track) return '';
+
+  // 1. Check if gpxContent has valid <trkpt> tags
+  if (track.gpxContent && typeof track.gpxContent === 'string' && track.gpxContent.includes('<trkpt')) {
+    return track.gpxContent;
+  }
+
+  // 2. If track has points array, generate fresh valid GPX XML
+  if (track.points && Array.isArray(track.points) && track.points.length > 0) {
+    track.gpxContent = generateGPXFromPoints(track.nombre, track.points);
+    return track.gpxContent;
+  }
+
+  return track.gpxContent || '';
+}
+
 function reanalyzeTrack(track) {
-  processAndDisplay(track.gpxContent, track.nombre + '.gpx');
+  const safeGPX = ensureValidGPXContent(track);
+  if (!safeGPX || !safeGPX.includes('<trkpt')) {
+    alert('No se pudieron recuperar los puntos de la ruta.');
+    return;
+  }
+  processAndDisplay(safeGPX, track.nombre + '.gpx');
   switchToTab('analizar');
 }
 

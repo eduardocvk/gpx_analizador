@@ -905,7 +905,8 @@ async function saveCreatedTrack() {
 
 function editTrackInCreator(track) {
   try {
-    const parsed = parseGPX(track.gpxContent);
+    const safeGPX = (typeof ensureValidGPXContent === 'function') ? ensureValidGPXContent(track) : track.gpxContent;
+    const parsed = parseGPX(safeGPX);
     if (!parsed.puntos || parsed.puntos.length === 0) {
       alert('El track no contiene puntos válidos');
       return;
