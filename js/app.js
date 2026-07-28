@@ -62,44 +62,11 @@ function generateGPXFromPoints(name, points) {
 }
 
 function prepareTrackForCloud(t) {
-  const copy = { ...t, inCloud: true };
-
-  // If points array is missing or empty, extract from gpxContent
-  if ((!copy.points || copy.points.length === 0) && copy.gpxContent) {
-    try {
-      const parsed = parseGPX(copy.gpxContent);
-      const rawPoints = parsed.puntos || parsed.points;
-      if (rawPoints && rawPoints.length > 0) {
-        copy.points = rawPoints.map(p => [
-          Number((p.lat !== undefined ? p.lat : p[0]).toFixed(5)),
-          Number((p.lon !== undefined ? p.lon : (p.lng !== undefined ? p.lng : p[1])).toFixed(5)),
-          Math.round(p.ele !== undefined ? p.ele : (p[2] || 0))
-        ]);
-      }
-    } catch (e) {
-      console.warn('Could not parse GPX points for track:', t.id, e);
-    }
-  }
-
-  // Only delete heavy gpxContent if we successfully have points!
-  if (copy.points && copy.points.length > 0) {
-    delete copy.gpxContent;
-  }
-
-  return copy;
+  return { ...t, inCloud: true };
 }
 
 function restoreCloudTrack(t) {
-  const track = { ...t, inCloud: true };
-  const pts = track.points || track.puntos;
-
-  // Rebuild gpxContent if missing or invalid
-  if (!track.gpxContent || !track.gpxContent.includes('<trkpt')) {
-    if (pts && pts.length > 0) {
-      track.gpxContent = generateGPXFromPoints(track.nombre, pts);
-    }
-  }
-  return track;
+  return { ...t, inCloud: true };
 }
 
 async function getCloudTracks() {
