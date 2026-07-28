@@ -62,11 +62,50 @@ function generateGPXFromPoints(name, points) {
 }
 
 function prepareTrackForCloud(t) {
-  return { ...t, inCloud: true };
+  const copy = { ...t, inCloud: true };
+
+  // If points array is missing or empty, extract from gpxContent
+  if ((!copy.points || copy.points.length === 0) && copy.gpxContent) {
+    try {
+      const parsed = parseGPX(copy.gpxContent);
+      const rawPts = parsed.puntos || parsed.points;
+      if (rawPts && rawPts.length > 0) {
+        copy.points = rawPts.map(p => [
+          Number((p.lat !== undefined ? p.lat : p[0]).toFixed(5)),
+          Number((p.lon !== undefined ? p.lon : (p.lng !== undefined ? p.lng : p[1])).toFixed(5)),
+          Math.round(p.ele !== undefined ? p.ele : (p[2] || 0))
+        ]);
+      }
+    } catch (e) {
+      console.warn('Could not parse GPX points for cloud sync:', t.id, e);
+    }
+  }
+
+  // Clean up whitespace in gpxContent if present
+  if (copy.gpxContent && typeof copy.gpxContent === 'string') {
+    // If gpxContent is large (>40KB) and we have points, drop raw XML to keep payload tiny
+    if (copy.gpxContent.length > 40000 && copy.points && copy.points.length > 0) {
+      delete copy.gpxContent;
+    } else {
+      copy.gpxContent = copy.gpxContent.replace(/>\s+</g, '><').trim();
+    }
+  }
+
+  delete copy.puntos;
+  return copy;
 }
 
 function restoreCloudTrack(t) {
-  return { ...t, inCloud: true };
+  const track = { ...t, inCloud: true };
+  const pts = track.points || track.puntos;
+
+  // Rebuild gpxContent if missing or invalid
+  if (!track.gpxContent || !track.gpxContent.includes('<trkpt')) {
+    if (pts && Array.isArray(pts) && pts.length > 0) {
+      track.gpxContent = generateGPXFromPoints(track.nombre, pts);
+    }
+  }
+  return track;
 }
 
 async function getCloudTracks() {
