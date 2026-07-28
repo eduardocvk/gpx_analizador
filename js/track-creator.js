@@ -3,7 +3,7 @@
 // Draws tracks on the map (manual or road-following)
 // =============================================
 
-const DEFAULT_ORS_KEY = '5b3ce3597851110001cf62485303dfb3a98544d6a13d3d664c39833e';
+const DEFAULT_ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImYyMjk4YTk2YzU1ODQ4NzRhZjM1NjAxNDQzMDY2YmVkIiwiaCI6Im11cm11cjY0In0=';
 
 // --- Creator State ---
 const creator = {
