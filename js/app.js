@@ -93,15 +93,22 @@ function prepareTrackForCloud(t) {
     copy.points = extractPointsFromGPX(copy.gpxContent);
   }
 
-  // 2. Clean up whitespace / compress heavy XML
-  if (copy.gpxContent && typeof copy.gpxContent === 'string') {
-    if (copy.gpxContent.length > 40000 && copy.points && copy.points.length > 0) {
-      delete copy.gpxContent;
-    } else {
-      copy.gpxContent = copy.gpxContent.replace(/>\s+</g, '><').trim();
+  // 2. Downsample points if larger than 1500 points to keep payload <30KB per track
+  if (copy.points && copy.points.length > 1500) {
+    const step = Math.ceil(copy.points.length / 1500);
+    const sampled = [];
+    for (let i = 0; i < copy.points.length; i += step) {
+      sampled.push(copy.points[i]);
     }
+    const last = copy.points[copy.points.length - 1];
+    if (sampled[sampled.length - 1] !== last) {
+      sampled.push(last);
+    }
+    copy.points = sampled;
   }
 
+  // 3. Always drop heavy raw gpxContent XML string from cloud HTTP payload to guarantee payload <100KB
+  delete copy.gpxContent;
   delete copy.puntos;
   return copy;
 }
@@ -139,7 +146,7 @@ async function getCloudTracks() {
 }
 
 async function syncTracksToCloud(tracksArray) {
-  if (!tracksArray || tracksArray.length === 0) return true;
+  if (!tracksArray || tracksArray.length === 0) return { ok: true };
 
   try {
     const cloudPayload = tracksArray.map(t => prepareTrackForCloud(t));
@@ -154,20 +161,20 @@ async function syncTracksToCloud(tracksArray) {
     });
 
     if (res.ok) {
-      // ONLY if HTTP PUT succeeded (200 OK), update local IndexedDB records with inCloud: true
       for (const t of tracksArray) {
         if (t && t.id) {
           await saveTrackToLocalDB({ ...t, inCloud: true });
         }
       }
-      return true;
+      return { ok: true };
     } else {
-      console.error('Cloud sync PUT failed with status:', res.status, res.statusText);
-      return false;
+      const errText = await res.text().catch(() => '');
+      console.error('Cloud sync PUT failed:', res.status, res.statusText, errText);
+      return { ok: false, status: res.status, message: `HTTP ${res.status}: ${res.statusText || 'Error en el servidor'}` };
     }
   } catch (err) {
     console.error('Cloud sync save error:', err);
-    return false;
+    return { ok: false, message: err.message || 'Error de conexión' };
   }
 }
 
@@ -186,9 +193,9 @@ async function forceSyncAllToCloud() {
     const cloudTracks = await getCloudTracks();
     const mergedTracks = mergeTracks(localTracks, cloudTracks || []);
 
-    const ok = await syncTracksToCloud(mergedTracks);
+    const result = await syncTracksToCloud(mergedTracks);
 
-    if (ok) {
+    if (result.ok) {
       const freshLocal = await getLocalTracks();
       renderHistoryTable(freshLocal);
 
@@ -201,10 +208,10 @@ async function forceSyncAllToCloud() {
         syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200';
         syncStatus.innerHTML = `<span>✕ Error al subir</span>`;
       }
-      alert('Error: El servidor no pudo recibir las rutas. Comprueba tu conexión a Internet.');
+      alert('Detalle del error al subir a la nube: ' + (result.message || 'Error de red'));
     }
   } catch (err) {
-    alert('Error al forzar la subida a la nube: ' + err.message);
+    alert('Error al forzar la subida: ' + err.message);
   } finally {
     if (btn) btn.disabled = false;
   }

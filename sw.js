@@ -3,7 +3,7 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v4';
+const CACHE_NAME = 'gpx-tracker-v6';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
 const MAX_TILES = 500;
 
@@ -11,8 +11,8 @@ const APP_SHELL = [
   './',
   './index.html',
   './css/style.css',
-  './js/app.js',
-  './js/track-creator.js',
+  './js/app.js?v=6',
+  './js/track-creator.js?v=6',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -32,15 +32,11 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: clean old caches
+// Activate: clean old caches completely
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(k => k !== CACHE_NAME && k !== TILES_CACHE)
-          .map(k => caches.delete(k))
-      )
+      Promise.all(keys.map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
