@@ -338,12 +338,18 @@ async function addWaypoint(latlng) {
       showRoutingSpinner(false);
     }
   } else {
-    // Manual mode — straight line
-    creator.routeSegments.push([[prevWp.lat, prevWp.lng, 0], [latlng.lat, latlng.lng, 0]]);
-    addWaypointMarker(latlng, creator.waypoints.length - 1);
-    rebuildPolyline();
-    updateMidpoints();
-    updateCreatorStats();
+    // Manual mode — straight line with elevation lookup
+    showRoutingSpinner(true);
+    try {
+      const seg = await enrichElevations([[prevWp.lat, prevWp.lng, 0], [latlng.lat, latlng.lng, 0]]);
+      creator.routeSegments.push(seg);
+      addWaypointMarker(latlng, creator.waypoints.length - 1);
+      rebuildPolyline();
+      updateMidpoints();
+      updateCreatorStats();
+    } finally {
+      showRoutingSpinner(false);
+    }
   }
 }
 
@@ -382,13 +388,67 @@ function rebuildAllMarkers() {
 
 
 // =============================================
-// 3. ROUTING (OpenRouteService)
+// 3. ROUTING (OpenRouteService & Elevation)
 // =============================================
 
-async function fetchRoute(from, to) {
-  const url = `https://api.openrouteservice.org/v2/directions/${creator.profile}?api_key=${creator.apiKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}&elevation=true`;
+async function enrichElevations(points) {
+  if (!points || points.length === 0) return points;
 
-  const response = await fetch(url);
+  // Check if elevation data is missing (points have 0 elevation)
+  const needsEle = points.some(p => !p[2] || p[2] === 0);
+  if (!needsEle) return points;
+
+  try {
+    const chunkSize = 80;
+    const enriched = [];
+
+    for (let i = 0; i < points.length; i += chunkSize) {
+      const chunk = points.slice(i, i + chunkSize);
+      const lats = chunk.map(p => p[0].toFixed(5)).join(',');
+      const lons = chunk.map(p => p[1].toFixed(5)).join(',');
+
+      const url = `https://elevation-api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`;
+      const res = await fetch(url);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.elevation && data.elevation.length === chunk.length) {
+          chunk.forEach((p, idx) => {
+            const ele = (data.elevation[idx] !== null && data.elevation[idx] !== undefined)
+              ? Math.round(data.elevation[idx])
+              : (p[2] || 0);
+            enriched.push([p[0], p[1], ele]);
+          });
+          continue;
+        }
+      }
+      enriched.push(...chunk);
+    }
+    return enriched;
+  } catch (err) {
+    console.warn('Open-Meteo elevation fallback error:', err);
+    return points;
+  }
+}
+
+async function fetchRoute(from, to) {
+  // Use POST request to /v2/directions/{profile}/geojson so ORS returns 3D coordinates [lon, lat, ele]
+  const url = `https://api.openrouteservice.org/v2/directions/${creator.profile}/geojson`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': creator.apiKey
+    },
+    body: JSON.stringify({
+      coordinates: [
+        [from.lng, from.lat],
+        [to.lng, to.lat]
+      ],
+      elevation: true
+    })
+  });
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
@@ -402,22 +462,27 @@ async function fetchRoute(from, to) {
   }
 
   const coords = data.features[0].geometry.coordinates;
-  // ORS returns [lon, lat, ele] — convert to [lat, lon, ele]
-  return coords.map(c => [c[1], c[0], c[2] || 0]);
+  // ORS returns [lon, lat, ele] 3D coordinates in GeoJSON format
+  let points = coords.map(c => [c[1], c[0], c[2] !== undefined ? Math.round(c[2]) : 0]);
+
+  // Fallback to Open-Meteo elevation if all or some elevation values are 0
+  points = await enrichElevations(points);
+
+  return points;
 }
 
 async function recalculateSegmentsAround(index) {
   if (creator.mode === 'manual') {
-    // Manual: rebuild simple segments
+    // Manual: rebuild simple segments with elevation lookup
     if (index > 0) {
       const prev = creator.waypoints[index - 1];
       const curr = creator.waypoints[index];
-      creator.routeSegments[index - 1] = [[prev.lat, prev.lng, 0], [curr.lat, curr.lng, 0]];
+      creator.routeSegments[index - 1] = await enrichElevations([[prev.lat, prev.lng, 0], [curr.lat, curr.lng, 0]]);
     }
     if (index < creator.waypoints.length - 1) {
       const curr = creator.waypoints[index];
       const next = creator.waypoints[index + 1];
-      creator.routeSegments[index] = [[curr.lat, curr.lng, 0], [next.lat, next.lng, 0]];
+      creator.routeSegments[index] = await enrichElevations([[curr.lat, curr.lng, 0], [next.lat, next.lng, 0]]);
     }
     rebuildPolyline();
     updateMidpoints();
