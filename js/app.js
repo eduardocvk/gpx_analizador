@@ -37,6 +37,53 @@ function openDB() {
   });
 }
 
+function generateGPXFromPoints(name, points) {
+  if (!points || !Array.isArray(points)) return '';
+  const safeName = (name || 'Ruta').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let xml = `<?xml version="1.1" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Tracker">\n  <trk>\n    <name>${safeName}</name>\n    <trkseg>\n`;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const lat = p[0];
+    const lon = p[1];
+    const ele = p[2] !== undefined ? p[2] : 0;
+    xml += `      <trkpt lat="${lat}" lon="${lon}"><ele>${ele}</ele></trkpt>\n`;
+  }
+  xml += `    </trkseg>\n  </trk>\n</gpx>`;
+  return xml;
+}
+
+function prepareTrackForCloud(t) {
+  const copy = { ...t, inCloud: true };
+
+  // If points exist, use compact points and strip heavy gpxContent XML from HTTP body
+  if (!copy.points && copy.gpxContent) {
+    try {
+      const parsed = parseGPX(copy.gpxContent);
+      if (parsed && parsed.points) {
+        copy.points = parsed.points.map(p => [
+          Number(p.lat.toFixed(5)),
+          Number(p.lon.toFixed(5)),
+          Math.round(p.ele || 0)
+        ]);
+      }
+    } catch (e) {
+      console.warn('Could not parse GPX points for cloud sync:', t.id);
+    }
+  }
+
+  // Remove bulky raw XML string to keep payload lightweight (<50 KB)
+  delete copy.gpxContent;
+  return copy;
+}
+
+function restoreCloudTrack(t) {
+  const track = { ...t, inCloud: true };
+  if (!track.gpxContent && track.points && track.points.length > 0) {
+    track.gpxContent = generateGPXFromPoints(track.nombre, track.points);
+  }
+  return track;
+}
+
 async function getCloudTracks() {
   try {
     const res = await fetch(CLOUD_SYNC_URL + '?t=' + Date.now(), {
@@ -46,7 +93,10 @@ async function getCloudTracks() {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return Array.isArray(data.tracks) ? data.tracks : null;
+    if (!Array.isArray(data.tracks)) return null;
+
+    // Restore full track objects with generated GPX XML content
+    return data.tracks.map(t => restoreCloudTrack(t));
   } catch (err) {
     console.warn('Cloud sync fetch warning:', err);
     return null;
@@ -54,26 +104,35 @@ async function getCloudTracks() {
 }
 
 async function syncTracksToCloud(tracksArray) {
+  if (!tracksArray || tracksArray.length === 0) return true;
+
   try {
-    const payload = (tracksArray || []).map(t => ({ ...t, inCloud: true }));
+    const cloudPayload = tracksArray.map(t => prepareTrackForCloud(t));
+
     const res = await fetch(CLOUD_SYNC_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({ tracks: payload })
+      body: JSON.stringify({ tracks: cloudPayload })
     });
 
     if (res.ok) {
-      for (const t of payload) {
-        if (t && t.id) await saveTrackToLocalDB(t);
+      // ONLY if HTTP PUT succeeded (200 OK), update local IndexedDB records with inCloud: true
+      for (const t of tracksArray) {
+        if (t && t.id) {
+          await saveTrackToLocalDB({ ...t, inCloud: true });
+        }
       }
+      return true;
     } else {
-      console.warn('Cloud sync PUT failed with status:', res.status);
+      console.error('Cloud sync PUT failed with status:', res.status, res.statusText);
+      return false;
     }
   } catch (err) {
-    console.warn('Cloud sync save warning:', err);
+    console.error('Cloud sync save error:', err);
+    return false;
   }
 }
 
@@ -89,16 +148,25 @@ async function forceSyncAllToCloud() {
 
   try {
     const localTracks = await getLocalTracks();
-    const updatedTracks = localTracks.map(t => ({ ...t, inCloud: true }));
     const cloudTracks = await getCloudTracks();
-    const finalMerged = mergeTracks(updatedTracks, cloudTracks || []);
+    const mergedTracks = mergeTracks(localTracks, cloudTracks || []);
 
-    await syncTracksToCloud(finalMerged);
-    renderHistoryTable(finalMerged);
+    const ok = await syncTracksToCloud(mergedTracks);
 
-    if (syncStatus) {
-      syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
-      syncStatus.innerHTML = `<span>✓ ${finalMerged.length} rutas subidas</span>`;
+    if (ok) {
+      const freshLocal = await getLocalTracks();
+      renderHistoryTable(freshLocal);
+
+      if (syncStatus) {
+        syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        syncStatus.innerHTML = `<span>✓ ${freshLocal.length} rutas subidas</span>`;
+      }
+    } else {
+      if (syncStatus) {
+        syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200';
+        syncStatus.innerHTML = `<span>✕ Error al subir</span>`;
+      }
+      alert('Error: El servidor no pudo recibir las rutas. Comprueba tu conexión a Internet.');
     }
   } catch (err) {
     alert('Error al forzar la subida a la nube: ' + err.message);
