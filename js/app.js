@@ -17,8 +17,11 @@ let deferredPrompt = null;
 
 
 // =============================================
-// 1. DATABASE (IndexedDB)
 // =============================================
+// CLOUD SYNC & DATABASE (IndexedDB + Cloud JSON)
+// =============================================
+
+const CLOUD_SYNC_URL = 'https://jsonblob.com/api/jsonBlob/019fa81c-49e9-74ad-b47a-76d7a51000c1';
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -26,7 +29,7 @@ function openDB() {
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -34,7 +37,37 @@ function openDB() {
   });
 }
 
-async function saveTrackToDB(track) {
+async function getCloudTracks() {
+  try {
+    const res = await fetch(CLOUD_SYNC_URL, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data.tracks) ? data.tracks : null;
+  } catch (err) {
+    console.warn('Cloud sync fetch warning:', err);
+    return null;
+  }
+}
+
+async function syncTracksToCloud(tracksArray) {
+  try {
+    await fetch(CLOUD_SYNC_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ tracks: tracksArray })
+    });
+  } catch (err) {
+    console.warn('Cloud sync save warning:', err);
+  }
+}
+
+async function saveTrackToLocalDB(track) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -44,7 +77,7 @@ async function saveTrackToDB(track) {
   });
 }
 
-async function getAllTracks() {
+async function getLocalTracks() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly');
@@ -54,14 +87,55 @@ async function getAllTracks() {
   });
 }
 
+async function getAllTracks() {
+  // 1. Try to fetch latest tracks from cloud
+  const cloudTracks = await getCloudTracks();
+  if (cloudTracks !== null) {
+    // Save/cache all cloud tracks into IndexedDB
+    for (const t of cloudTracks) {
+      if (t && t.id) await saveTrackToLocalDB(t);
+    }
+    return cloudTracks;
+  }
+
+  // 2. Fallback to local IndexedDB if offline
+  return getLocalTracks();
+}
+
+async function saveTrackToDB(track) {
+  if (!track.id) {
+    track.id = Date.now() + Math.floor(Math.random() * 1000);
+  }
+
+  // Save to local IndexedDB
+  await saveTrackToLocalDB(track);
+
+  // Sync current list of tracks to Cloud
+  try {
+    const allLocal = await getLocalTracks();
+    await syncTracksToCloud(allLocal);
+  } catch (e) {
+    console.warn('Error pushing to cloud sync:', e);
+  }
+}
+
 async function deleteTrackFromDB(id) {
+  // Delete from local IndexedDB
   const db = await openDB();
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     tx.objectStore(STORE_NAME).delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  // Sync updated list to Cloud
+  try {
+    const remaining = await getLocalTracks();
+    await syncTracksToCloud(remaining);
+  } catch (e) {
+    console.warn('Error syncing deletion to cloud:', e);
+  }
 }
 
 
