@@ -55,16 +55,55 @@ async function getCloudTracks() {
 
 async function syncTracksToCloud(tracksArray) {
   try {
-    await fetch(CLOUD_SYNC_URL, {
+    const payload = (tracksArray || []).map(t => ({ ...t, inCloud: true }));
+    const res = await fetch(CLOUD_SYNC_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({ tracks: tracksArray })
+      body: JSON.stringify({ tracks: payload })
     });
+
+    if (res.ok) {
+      for (const t of payload) {
+        if (t && t.id) await saveTrackToLocalDB(t);
+      }
+    } else {
+      console.warn('Cloud sync PUT failed with status:', res.status);
+    }
   } catch (err) {
     console.warn('Cloud sync save warning:', err);
+  }
+}
+
+async function forceSyncAllToCloud() {
+  const syncStatus = document.getElementById('cloudSyncStatus');
+  const btn = document.getElementById('btnForceSync');
+  if (btn) btn.disabled = true;
+
+  if (syncStatus) {
+    syncStatus.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 animate-pulse';
+    syncStatus.innerHTML = `<span>⏳ Subiendo rutas a la nube...</span>`;
+  }
+
+  try {
+    const localTracks = await getLocalTracks();
+    const updatedTracks = localTracks.map(t => ({ ...t, inCloud: true }));
+    const cloudTracks = await getCloudTracks();
+    const finalMerged = mergeTracks(updatedTracks, cloudTracks || []);
+
+    await syncTracksToCloud(finalMerged);
+    renderHistoryTable(finalMerged);
+
+    if (syncStatus) {
+      syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+      syncStatus.innerHTML = `<span>✓ ${finalMerged.length} rutas subidas</span>`;
+    }
+  } catch (err) {
+    alert('Error al forzar la subida a la nube: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -798,6 +837,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Save button
   document.getElementById('btnGuardar').addEventListener('click', saveCurrentTrack);
+
+  // Force sync button
+  const forceSyncBtn = document.getElementById('btnForceSync');
+  if (forceSyncBtn) forceSyncBtn.addEventListener('click', forceSyncAllToCloud);
 
   // Tab navigation
   document.getElementById('tabAnalizar').addEventListener('click', () => switchToTab('analizar'));

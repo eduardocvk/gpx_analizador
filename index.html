@@ -185,9 +185,17 @@
     <!-- ===== HISTORY VIEW ===== -->
     <section id="vistaHistorial" class="hidden space-y-3 md:space-y-4 fade-in">
 
-      <div class="flex items-center justify-between px-1">
+      <div class="flex flex-wrap items-center justify-between gap-2 px-1">
         <h2 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Mis Tracks Guardados</h2>
-        <div id="cloudSyncStatus"></div>
+        <div class="flex items-center gap-2">
+          <div id="cloudSyncStatus"></div>
+          <button id="btnForceSync" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shadow-sm cursor-pointer" title="Subir todas las rutas locales a la nube">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <span>Subir todo a la nube</span>
+          </button>
+        </div>
       </div>
 
       <!-- Summary Stats -->
