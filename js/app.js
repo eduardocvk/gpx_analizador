@@ -404,6 +404,11 @@ function parseGPX(text) {
 
   // Get track name
   const safeFileName = (typeof fileName !== 'undefined' && fileName) ? fileName.replace('.gpx', '') : 'Sin nombre';
+  const trackElement = xmlDoc.getElementsByTagName('trk')[0];
+  const metadataElement = xmlDoc.getElementsByTagName('metadata')[0];
+  const nameTag = trackElement?.getElementsByTagName('name')[0]
+    || metadataElement?.getElementsByTagName('name')[0]
+    || xmlDoc.getElementsByTagName('name')[0];
   const trackName = nameTag ? nameTag.textContent.trim() : safeFileName;
 
   let points = [];
