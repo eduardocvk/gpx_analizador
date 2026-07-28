@@ -78,6 +78,9 @@
         <button id="tabHistorial" class="px-4 py-1.5 text-sm font-bold rounded-md text-gray-300 hover:text-white hover:bg-slate-600 transition-all duration-200">
           Mis Tracks
         </button>
+        <button id="tabCrear" class="px-4 py-1.5 text-sm font-bold rounded-md text-gray-300 hover:text-white hover:bg-slate-600 transition-all duration-200">
+          ✏️ Crear
+        </button>
       </nav>
     </div>
   </header>
@@ -215,6 +218,132 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== CREATOR VIEW ===== -->
+    <section id="vistaCrear" class="hidden space-y-3 md:space-y-4 fade-in">
+
+      <!-- Creator Toolbar -->
+      <div class="glass-card p-3 md:p-4 rounded-xl shadow-sm">
+        <div class="flex flex-wrap gap-3 md:gap-4 items-end justify-between">
+          <!-- Track Name -->
+          <div class="w-full sm:w-48">
+            <label for="creatorTrackName" class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wider">Nombre del track</label>
+            <input type="text" id="creatorTrackName" placeholder="Mi ruta..." 
+              class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+          </div>
+
+          <!-- Mode Toggle -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Manual</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="creatorModeToggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Carretera</span>
+          </div>
+
+          <!-- Profile Selector -->
+          <div id="profileSelector">
+            <label for="creatorProfile" class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wider">Perfil</label>
+            <select id="creatorProfile" class="bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+              <option value="cycling-road" selected>🚴 Bici Carretera</option>
+              <option value="cycling-mountain">🚵 Bici Montaña (MTB)</option>
+              <option value="foot-hiking">🏃 Correr / Trail</option>
+              <option value="foot-walking">🚶 Caminar</option>
+            </select>
+          </div>
+
+          <!-- API Key -->
+          <div id="apiKeyGroup" class="flex items-end gap-2">
+            <div class="w-full sm:w-56">
+              <label for="orsApiKey" class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wider">API Key ORS</label>
+              <input type="password" id="orsApiKey" placeholder="Pega tu clave aquí..." 
+                class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+            </div>
+            <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener" 
+              class="text-blue-500 hover:text-blue-700 transition-colors p-2" title="Obtener API key gratis">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </a>
+          </div>
+
+          <!-- Live Stats -->
+          <div class="flex items-center gap-4">
+            <div class="text-center">
+              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Distancia</p>
+              <p id="creatorDistance" class="font-extrabold text-lg text-blue-600">0.00 km</p>
+            </div>
+            <div class="text-center">
+              <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Puntos</p>
+              <p id="creatorPoints" class="font-extrabold text-lg text-emerald-600">0</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Creator Map -->
+      <div class="glass-card p-2 rounded-xl shadow-sm relative">
+        <div id="mapCrear"></div>
+
+        <!-- Routing Spinner -->
+        <div id="routingSpinner" class="hidden absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg flex items-center gap-2">
+          <svg class="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-xs font-bold text-blue-600">Calculando ruta...</span>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="creator-actions">
+          <button id="btnUndo" disabled class="creator-action-btn" title="Deshacer (Ctrl+Z)">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4"/>
+            </svg>
+            <span>Deshacer</span>
+          </button>
+          <button id="btnReturnToStart" disabled class="creator-action-btn" title="Volver al inicio">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span>Volver al inicio</span>
+          </button>
+          <button id="btnClearTrack" disabled class="creator-action-btn creator-action-btn--danger" title="Borrar todo">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            <span>Limpiar</span>
+          </button>
+          <div class="creator-action-separator"></div>
+          <button id="btnSaveCreated" disabled class="creator-action-btn creator-action-btn--save" title="Guardar en Mis Tracks">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+            </svg>
+            <span>Guardar</span>
+          </button>
+          <button id="btnDownloadCreated" disabled class="creator-action-btn creator-action-btn--download" title="Descargar GPX">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <span>GPX</span>
+          </button>
+        </div>
+
+        <!-- Save Status -->
+        <div id="creatorSaveStatus" class="absolute top-4 left-4 z-[1000] text-xs font-bold"></div>
+      </div>
+
+      <!-- Help Tip -->
+      <div class="glass-card p-3 rounded-xl shadow-sm">
+        <div class="flex items-center gap-2 text-gray-500 text-xs">
+          <svg class="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p><strong>Haz clic en el mapa</strong> para añadir puntos. Arrastra los <strong>puntos azules</strong> para moverlos o los <strong>puntos fantasma</strong> entre ellos para insertar nuevos waypoints.</p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- ===== FOOTER ===== -->
@@ -224,5 +353,6 @@
 
   <!-- App Logic -->
   <script src="js/app.js"></script>
+  <script src="js/track-creator.js"></script>
 </body>
 </html>

@@ -535,28 +535,41 @@ function escapeHtml(text) {
 function switchToTab(tab) {
   const btnA = document.getElementById('tabAnalizar');
   const btnH = document.getElementById('tabHistorial');
+  const btnC = document.getElementById('tabCrear');
   const vistaA = document.getElementById('vistaAnalizar');
   const vistaH = document.getElementById('vistaHistorial');
+  const vistaC = document.getElementById('vistaCrear');
 
   const activeClass = 'px-4 py-1.5 text-sm font-bold rounded-md bg-blue-600 text-white transition-all duration-200';
   const inactiveClass = 'px-4 py-1.5 text-sm font-bold rounded-md text-gray-300 hover:text-white hover:bg-slate-600 transition-all duration-200';
 
+  // Hide all views, deactivate all buttons
+  vistaA.classList.add('hidden');
+  vistaH.classList.add('hidden');
+  vistaC.classList.add('hidden');
+  btnA.className = inactiveClass;
+  btnH.className = inactiveClass;
+  btnC.className = inactiveClass;
+
   if (tab === 'analizar') {
     vistaA.classList.remove('hidden');
-    vistaH.classList.add('hidden');
     btnA.className = activeClass;
-    btnH.className = inactiveClass;
     // Recalculate map/chart sizes after tab switch
     setTimeout(() => {
       if (chart) chart.resize();
       if (map) map.invalidateSize();
     }, 150);
-  } else {
-    vistaA.classList.add('hidden');
+  } else if (tab === 'historial') {
     vistaH.classList.remove('hidden');
     btnH.className = activeClass;
-    btnA.className = inactiveClass;
     loadHistory();
+  } else if (tab === 'crear') {
+    vistaC.classList.remove('hidden');
+    btnC.className = activeClass;
+    // Lazy-init creator map
+    if (typeof initCreator === 'function') {
+      setTimeout(() => initCreator(), 150);
+    }
   }
 }
 
@@ -618,6 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tab navigation
   document.getElementById('tabAnalizar').addEventListener('click', () => switchToTab('analizar'));
   document.getElementById('tabHistorial').addEventListener('click', () => switchToTab('historial'));
+  document.getElementById('tabCrear').addEventListener('click', () => switchToTab('crear'));
 
   // PWA install buttons
   const installBtn = document.getElementById('btnInstall');
