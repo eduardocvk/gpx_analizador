@@ -472,10 +472,6 @@ async function saveCurrentTrack() {
 
     status.className = 'text-xs font-bold text-green-600 h-4';
     status.textContent = '✓ Guardado';
-    btn.disabled = false;
-
-    // Auto-clear status after 3s
-    setTimeout(() => { status.textContent = ''; }, 3000);
   } catch (err) {
     status.className = 'text-xs font-bold text-red-600 h-4';
     status.textContent = '✕ Error';
@@ -483,35 +479,29 @@ async function saveCurrentTrack() {
   }
 }
 
-async function loadHistory() {
+function renderHistoryTable(tracks) {
   const tbody = document.getElementById('tablaHistorial');
   const statsContainer = document.getElementById('historialStats');
+  if (!tbody) return;
 
-  tbody.innerHTML = `
-    <tr><td colspan="5" class="px-4 py-6 text-center text-blue-600 font-bold animate-pulse">
-      Cargando...
-    </td></tr>`;
+  if (!tracks || tracks.length === 0) {
+    if (statsContainer) statsContainer.classList.add('hidden');
+    tbody.innerHTML = `
+      <tr><td colspan="5" class="px-4 py-12 text-center text-gray-400">
+        <svg class="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        <p class="font-bold">No hay tracks guardados</p>
+        <p class="text-xs mt-1">Analiza y guarda tu primera ruta</p>
+      </td></tr>`;
+    return;
+  }
 
-  try {
-    const tracks = await getAllTracks();
+  // Calculate totals
+  const totalKm = tracks.reduce((sum, t) => sum + (t.distancia || 0), 0);
+  const totalDplus = tracks.reduce((sum, t) => sum + (t.desnivelPositivo || 0), 0);
 
-    if (tracks.length === 0) {
-      statsContainer.classList.add('hidden');
-      tbody.innerHTML = `
-        <tr><td colspan="5" class="px-4 py-12 text-center text-gray-400">
-          <svg class="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-          </svg>
-          <p class="font-bold">No hay tracks guardados</p>
-          <p class="text-xs mt-1">Analiza y guarda tu primera ruta</p>
-        </td></tr>`;
-      return;
-    }
-
-    // Calculate totals
-    const totalKm = tracks.reduce((sum, t) => sum + t.distancia, 0);
-    const totalDplus = tracks.reduce((sum, t) => sum + t.desnivelPositivo, 0);
-
+  if (statsContainer) {
     statsContainer.classList.remove('hidden');
     statsContainer.querySelector('div').innerHTML = `
       <div class="text-center">
@@ -526,81 +516,127 @@ async function loadHistory() {
         <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Desnivel total</p>
         <p class="font-extrabold text-xl text-emerald-600">${totalDplus.toLocaleString('es-ES')} m</p>
       </div>`;
+  }
 
-    // Render table rows
-    tbody.innerHTML = '';
-    tracks.forEach(t => {
-      const fecha = new Date(t.fecha);
-      const fechaStr = fecha.toLocaleDateString('es-ES', {
-        day: '2-digit', month: '2-digit', year: 'numeric'
-      });
-
-      const tr = document.createElement('tr');
-      tr.className = 'hover:bg-blue-50/60 cursor-pointer transition-colors group';
-      tr.innerHTML = `
-        <td class="px-4 py-3 whitespace-nowrap text-gray-400 text-xs">${fechaStr}</td>
-        <td class="px-4 py-3 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">${escapeHtml(t.nombre)}</td>
-        <td class="px-4 py-3 whitespace-nowrap text-right text-blue-600 font-bold tabular-nums">${t.distancia.toFixed(2)}</td>
-        <td class="px-4 py-3 whitespace-nowrap text-right text-emerald-600 font-bold tabular-nums">${t.desnivelPositivo} m</td>
-        <td class="px-4 py-3 whitespace-nowrap text-center">
-          <div class="flex items-center justify-center gap-1">
-            <button class="btn-edit p-1.5 text-gray-300 hover:text-amber-600 transition-colors rounded-lg hover:bg-amber-50" title="Editar track en el creador">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-            </button>
-            <button class="btn-reanalyze p-1.5 text-gray-300 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50" title="Analizar altimetría">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-            </button>
-            <button class="btn-download p-1.5 text-gray-300 hover:text-emerald-600 transition-colors rounded-lg hover:bg-emerald-50" title="Descargar GPX">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            </button>
-            <button class="btn-delete p-1.5 text-gray-300 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50" title="Eliminar">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-            </button>
-          </div>
-        </td>`;
-
-      // Click row to re-analyze
-      tr.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit')) return;
-        reanalyzeTrack(t);
-      });
-
-      // Edit button
-      tr.querySelector('.btn-edit').addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof editTrackInCreator === 'function') {
-          editTrackInCreator(t);
-        }
-      });
-
-      // Re-analyze button
-      tr.querySelector('.btn-reanalyze').addEventListener('click', (e) => {
-        e.stopPropagation();
-        reanalyzeTrack(t);
-      });
-
-      // Download button
-      tr.querySelector('.btn-download').addEventListener('click', (e) => {
-        e.stopPropagation();
-        downloadGPX(t.gpxContent, t.nombre + '.gpx');
-      });
-
-      // Delete button
-      tr.querySelector('.btn-delete').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (confirm(`¿Eliminar "${t.nombre}"?`)) {
-          await deleteTrackFromDB(t.id);
-          loadHistory();
-        }
-      });
-
-      tbody.appendChild(tr);
+  // Render table rows
+  tbody.innerHTML = '';
+  tracks.forEach(t => {
+    const fecha = new Date(t.fecha);
+    const fechaStr = fecha.toLocaleDateString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric'
     });
+
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-blue-50/60 cursor-pointer transition-colors group';
+    tr.innerHTML = `
+      <td class="px-4 py-3 whitespace-nowrap text-gray-400 text-xs">${fechaStr}</td>
+      <td class="px-4 py-3 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">${escapeHtml(t.nombre)}</td>
+      <td class="px-4 py-3 whitespace-nowrap text-right text-blue-600 font-bold tabular-nums">${(t.distancia || 0).toFixed(2)}</td>
+      <td class="px-4 py-3 whitespace-nowrap text-right text-emerald-600 font-bold tabular-nums">+${(t.desnivelPositivo || 0).toLocaleString('es-ES')}m</td>
+      <td class="px-4 py-3 whitespace-nowrap text-center text-xs">
+        <div class="flex items-center justify-center gap-1.5">
+          <button class="btn-edit p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors" title="Editar en Creador">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
+          <button class="btn-reanalyze p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors" title="Ver análisis">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+          <button class="btn-download p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" title="Descargar GPX">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
+          <button class="btn-delete p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Eliminar">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </td>`;
+
+    // Listeners
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit')) return;
+      reanalyzeTrack(t);
+    });
+
+    tr.querySelector('.btn-edit').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof editTrackInCreator === 'function') editTrackInCreator(t);
+    });
+
+    tr.querySelector('.btn-reanalyze').addEventListener('click', (e) => {
+      e.stopPropagation();
+      reanalyzeTrack(t);
+    });
+
+    tr.querySelector('.btn-download').addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadGPX(t.gpxContent, t.nombre + '.gpx');
+    });
+
+    tr.querySelector('.btn-delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (confirm(`¿Eliminar "${t.nombre}"?`)) {
+        await deleteTrackFromDB(t.id);
+        loadHistory();
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadHistory() {
+  const syncStatus = document.getElementById('cloudSyncStatus');
+
+  // 1. Instantly render local tracks first (0 delay!)
+  try {
+    const localTracks = await getLocalTracks();
+    renderHistoryTable(localTracks);
   } catch (err) {
-    tbody.innerHTML = `
-      <tr><td colspan="5" class="px-4 py-6 text-center text-red-500 font-bold">
-        Error al cargar el historial
-      </td></tr>`;
+    console.warn('Error loading local tracks:', err);
+  }
+
+  // 2. Show syncing status badge
+  if (syncStatus) {
+    syncStatus.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse';
+    syncStatus.innerHTML = `
+      <svg class="animate-spin w-3 h-3 text-amber-600" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>Sincronizando...</span>`;
+  }
+
+  // 3. Fetch cloud tracks in background
+  try {
+    const cloudTracks = await getCloudTracks();
+    if (cloudTracks !== null) {
+      for (const t of cloudTracks) {
+        if (t && t.id) await saveTrackToLocalDB(t);
+      }
+      renderHistoryTable(cloudTracks);
+      if (syncStatus) {
+        syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        syncStatus.innerHTML = `<span>☁️ Sincronizado</span>`;
+      }
+    } else {
+      if (syncStatus) {
+        syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200';
+        syncStatus.innerHTML = `<span>📱 Modo local</span>`;
+      }
+    }
+  } catch (err) {
+    if (syncStatus) {
+      syncStatus.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200';
+      syncStatus.innerHTML = `<span>📱 Modo local</span>`;
+    }
   }
 }
 

@@ -323,10 +323,11 @@ async function addWaypoint(latlng) {
       showRoutingSpinner(false);
     }
   } else {
-    // Manual mode — straight line with elevation lookup
+    // Manual mode — straight line with interpolated terrain elevation lookup
     showRoutingSpinner(true);
     try {
-      const seg = await enrichElevations([[prevWp.lat, prevWp.lng, 0], [latlng.lat, latlng.lng, 0]]);
+      const linePoints = interpolateSegmentPoints(prevWp, latlng, 0.05);
+      const seg = await enrichElevations(linePoints);
       creator.routeSegments.push(seg);
       addWaypointMarker(latlng, creator.waypoints.length - 1);
       rebuildPolyline();
@@ -336,6 +337,19 @@ async function addWaypoint(latlng) {
       showRoutingSpinner(false);
     }
   }
+}
+
+function interpolateSegmentPoints(from, to, stepKm = 0.05) {
+  const dist = haversineDistanceCreator(from.lat, from.lng, to.lat, to.lng);
+  const numSteps = Math.max(2, Math.ceil(dist / stepKm));
+  const points = [];
+  for (let i = 0; i <= numSteps; i++) {
+    const frac = i / numSteps;
+    const lat = from.lat + (to.lat - from.lat) * frac;
+    const lng = from.lng + (to.lng - from.lng) * frac;
+    points.push([lat, lng, 0]);
+  }
+  return points;
 }
 
 function indexToLetter(index) {
@@ -468,16 +482,18 @@ async function fetchRoute(from, to) {
 
 async function recalculateSegmentsAround(index) {
   if (creator.mode === 'manual') {
-    // Manual: rebuild simple segments with elevation lookup
+    // Manual: rebuild simple segments with interpolated elevation lookup
     if (index > 0) {
       const prev = creator.waypoints[index - 1];
       const curr = creator.waypoints[index];
-      creator.routeSegments[index - 1] = await enrichElevations([[prev.lat, prev.lng, 0], [curr.lat, curr.lng, 0]]);
+      const ptsPrev = interpolateSegmentPoints(prev, curr, 0.05);
+      creator.routeSegments[index - 1] = await enrichElevations(ptsPrev);
     }
     if (index < creator.waypoints.length - 1) {
       const curr = creator.waypoints[index];
       const next = creator.waypoints[index + 1];
-      creator.routeSegments[index] = await enrichElevations([[curr.lat, curr.lng, 0], [next.lat, next.lng, 0]]);
+      const ptsNext = interpolateSegmentPoints(curr, next, 0.05);
+      creator.routeSegments[index] = await enrichElevations(ptsNext);
     }
     rebuildPolyline();
     updateMidpoints();
