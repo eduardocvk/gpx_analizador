@@ -11,6 +11,15 @@ const STORE_NAME = 'tracks';
 // --- Global State ---
 let chart, map, mapMarker, mapPolyline;
 let parsedData = null;
+let detectedClimbs = [];
+let climbMapLayers = [];
+let activeClimbLayer = null;
+let gpsWatchId = null;
+let gpsMarker = null;
+let gpsAccuracyCircle = null;
+let gpsRouteConnector = null;
+let gpsNearestMarker = null;
+let historyThumbnailMaps = [];
 let fileContent = '';
 let fileName = '';
 let deferredPrompt = null;
@@ -445,6 +454,250 @@ function parseGPX(text) {
 
 
 // =============================================
+// CLIMB & MOUNTAIN PASS DETECTION
+// =============================================
+
+function interpolateTrackPoint(points, targetDistance) {
+  if (!points?.length) return null;
+  if (targetDistance <= points[0].distance) return { ...points[0], distance: targetDistance };
+  if (targetDistance >= points[points.length - 1].distance) return { ...points[points.length - 1], distance: targetDistance };
+
+  let low = 1;
+  let high = points.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (points[mid].distance < targetDistance) low = mid + 1;
+    else high = mid;
+  }
+
+  const before = points[low - 1];
+  const after = points[low];
+  const span = after.distance - before.distance;
+  const ratio = span > 0 ? (targetDistance - before.distance) / span : 0;
+  return {
+    lat: before.lat + (after.lat - before.lat) * ratio,
+    lon: before.lon + (after.lon - before.lon) * ratio,
+    ele: before.ele + (after.ele - before.ele) * ratio,
+    distance: targetDistance
+  };
+}
+
+function getClimbCategory(gain, averageSlope) {
+  if (gain >= 1000 || (gain >= 800 && averageSlope >= 7)) return 'HC';
+  if (gain >= 700) return '1ª';
+  if (gain >= 500) return '2ª';
+  if (gain >= 300) return '3ª';
+  if (gain >= 150) return '4ª';
+  return 'Cota';
+}
+
+function getClimbCategoryColor(category) {
+  return {
+    HC: '#171717',
+    '1ª': '#881337',
+    '2ª': '#dc2626',
+    '3ª': '#ea580c',
+    '4ª': '#eab308',
+    Cota: '#10b981'
+  }[category] || '#ea580c';
+}
+
+function detectClimbs(points) {
+  if (!points || points.length < 3) return [];
+  const totalDistance = points[points.length - 1].distance;
+  if (totalDistance < 0.5) return [];
+
+  const step = 0.1; // 100 m samples make the result independent from GPX point density.
+  const samples = [];
+  for (let distance = 0; distance < totalDistance; distance += step) {
+    samples.push(interpolateTrackPoint(points, distance));
+  }
+  samples.push(interpolateTrackPoint(points, totalDistance));
+
+  // Light weighted smoothing removes isolated GPS altitude spikes.
+  const smoothed = samples.map((sample, index) => {
+    const previous = samples[Math.max(0, index - 1)].ele;
+    const next = samples[Math.min(samples.length - 1, index + 1)].ele;
+    return { ...sample, ele: (previous + sample.ele * 2 + next) / 4 };
+  });
+
+  const climbs = [];
+  let activeStart = null;
+  let summitIndex = null;
+
+  const finalizeClimb = () => {
+    if (activeStart === null || summitIndex === null || summitIndex <= activeStart) return;
+    const start = smoothed[activeStart];
+    const summit = smoothed[summitIndex];
+    const distance = summit.distance - start.distance;
+    const gain = summit.ele - start.ele;
+    const averageSlope = distance > 0 ? gain / (distance * 10) : 0;
+
+    if (distance >= 0.5 && gain >= 30 && averageSlope >= 2.5) {
+      let maxSlope = 0;
+      for (let i = activeStart + 2; i <= summitIndex; i++) {
+        const run = smoothed[i].distance - smoothed[i - 2].distance;
+        if (run <= 0) continue;
+        const slope = (smoothed[i].ele - smoothed[i - 2].ele) / (run * 10);
+        maxSlope = Math.max(maxSlope, slope);
+      }
+
+      const category = getClimbCategory(gain, averageSlope);
+      climbs.push({
+        startDistance: start.distance,
+        endDistance: summit.distance,
+        distance,
+        gain: Math.round(gain),
+        averageSlope,
+        maxSlope,
+        startElevation: Math.round(start.ele),
+        summitElevation: Math.round(summit.ele),
+        startPoint: start,
+        summitPoint: summit,
+        category,
+        isPass: category !== 'Cota'
+      });
+    }
+  };
+
+  for (let i = 2; i < smoothed.length; i++) {
+    const rollingRun = smoothed[i].distance - smoothed[i - 2].distance;
+    const rollingSlope = rollingRun > 0
+      ? (smoothed[i].ele - smoothed[i - 2].ele) / (rollingRun * 10)
+      : 0;
+
+    if (activeStart === null) {
+      if (rollingSlope >= 2) {
+        const searchFrom = Math.max(0, i - 5);
+        activeStart = searchFrom;
+        for (let j = searchFrom + 1; j <= i; j++) {
+          if (smoothed[j].ele < smoothed[activeStart].ele) activeStart = j;
+        }
+        summitIndex = i;
+      }
+      continue;
+    }
+
+    if (smoothed[i].ele >= smoothed[summitIndex].ele) summitIndex = i;
+    const distanceAfterSummit = smoothed[i].distance - smoothed[summitIndex].distance;
+    const dropAfterSummit = smoothed[summitIndex].ele - smoothed[i].ele;
+
+    if ((distanceAfterSummit >= 0.3 && dropAfterSummit >= 12) || distanceAfterSummit >= 0.7) {
+      finalizeClimb();
+      activeStart = null;
+      summitIndex = null;
+
+      if (rollingSlope >= 2) {
+        activeStart = Math.max(0, i - 2);
+        summitIndex = i;
+      }
+    }
+  }
+
+  finalizeClimb();
+
+  return climbs.map((climb, index) => ({
+    ...climb,
+    index,
+    label: climb.isPass ? `Puerto ${index + 1}` : `Subida ${index + 1}`
+  }));
+}
+
+function clearClimbMapLayers() {
+  if (!map) return;
+  climbMapLayers.forEach(layer => {
+    if (map.hasLayer(layer)) map.removeLayer(layer);
+  });
+  climbMapLayers = [];
+  if (activeClimbLayer && map.hasLayer(activeClimbLayer)) map.removeLayer(activeClimbLayer);
+  activeClimbLayer = null;
+}
+
+function focusClimb(climb) {
+  if (!climb || !parsedData || !map || !chart) return;
+  const maxDistance = parsedData.puntos[parsedData.puntos.length - 1].distance || 1;
+  const padding = Math.min(0.3, climb.distance * 0.15);
+  const start = Math.max(0, ((climb.startDistance - padding) / maxDistance) * 100);
+  const end = Math.min(100, ((climb.endDistance + padding) / maxDistance) * 100);
+  chart.dispatchAction({ type: 'dataZoom', start, end });
+
+  if (activeClimbLayer && map.hasLayer(activeClimbLayer)) map.removeLayer(activeClimbLayer);
+  const climbPoints = parsedData.puntos
+    .filter(point => point.distance >= climb.startDistance && point.distance <= climb.endDistance)
+    .map(point => [point.lat, point.lon]);
+  if (climbPoints.length >= 2) {
+    activeClimbLayer = L.polyline(climbPoints, {
+      color: getClimbCategoryColor(climb.category),
+      weight: 7,
+      opacity: 0.95
+    }).addTo(map);
+    map.fitBounds(activeClimbLayer.getBounds(), { padding: [35, 35] });
+  }
+  updateMarkerFromChart(climb.endDistance, climb.averageSlope);
+  document.getElementById('profileCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderDetectedClimbs(climbs) {
+  const section = document.getElementById('climbsSection');
+  const list = document.getElementById('climbsList');
+  const summary = document.getElementById('climbsSummary');
+  if (!section || !list || !summary) return;
+
+  clearClimbMapLayers();
+  section.classList.remove('hidden');
+  const passCount = climbs.filter(climb => climb.isPass).length;
+  const totalGain = climbs.reduce((sum, climb) => sum + climb.gain, 0);
+  summary.textContent = `${climbs.length} subida${climbs.length === 1 ? '' : 's'} · ${passCount} puerto${passCount === 1 ? '' : 's'} · +${totalGain} m`;
+
+  if (climbs.length === 0) {
+    list.innerHTML = '<div class="md:col-span-2 xl:col-span-3 py-4 text-center text-xs font-bold text-gray-400">No se han detectado subidas continuas relevantes en esta ruta.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  climbs.forEach((climb, index) => {
+    const color = getClimbCategoryColor(climb.category);
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'climb-card';
+    card.style.setProperty('--climb-color', color);
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <p class="text-xs font-black text-gray-900">${climb.isPass ? 'Puerto' : 'Subida'} ${index + 1}</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">km ${climb.startDistance.toFixed(1)} → ${climb.endDistance.toFixed(1)}</p>
+        </div>
+        <span class="climb-category" style="--climb-color:${color}">${climb.category}</span>
+      </div>
+      <div class="grid grid-cols-4 gap-1.5 mt-2.5 text-center">
+        <div><p class="text-[9px] font-bold uppercase text-gray-400">Long.</p><p class="text-xs font-extrabold text-blue-600">${climb.distance.toFixed(1)} km</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-gray-400">Desnivel</p><p class="text-xs font-extrabold text-emerald-600">+${climb.gain} m</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-gray-400">Media</p><p class="text-xs font-extrabold text-orange-600">${climb.averageSlope.toFixed(1)}%</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-gray-400">Máx.</p><p class="text-xs font-extrabold text-red-600">${climb.maxSlope.toFixed(1)}%</p></div>
+      </div>`;
+    card.addEventListener('click', () => focusClimb(climb));
+    list.appendChild(card);
+
+    const summitIcon = L.divIcon({
+      html: `<div class="climb-summit-marker">${index + 1}</div>`,
+      className: '',
+      iconSize: [32, 28],
+      iconAnchor: [16, 28]
+    });
+    const summitMarker = L.marker([climb.summitPoint.lat, climb.summitPoint.lon], {
+      icon: summitIcon,
+      zIndexOffset: 250
+    }).bindTooltip(`<b>${climb.isPass ? 'Puerto' : 'Subida'} ${index + 1}</b><br>${climb.distance.toFixed(1)} km · +${climb.gain} m<br>${climb.averageSlope.toFixed(1)}% media`, {
+      direction: 'top',
+      offset: [0, -24]
+    }).addTo(map);
+    summitMarker.on('click', () => focusClimb(climb));
+    climbMapLayers.push(summitMarker);
+  });
+}
+
+
+// =============================================
 // 3. MAP (Leaflet)
 // =============================================
 
@@ -490,6 +743,7 @@ function updateMap(points) {
   const latLngs = points.map(p => [p.lat, p.lon]);
   if (mapPolyline) map.removeLayer(mapPolyline);
   clearProfileMapMarker();
+  clearClimbMapLayers();
 
   mapPolyline = L.polyline(latLngs, {
     color: '#ef4444',
@@ -556,6 +810,151 @@ function clearProfileMapMarker() {
   if (map && mapMarker && map.hasLayer(mapMarker)) {
     map.removeLayer(mapMarker);
   }
+}
+
+function findNearestRoutePointToLocation(lat, lon) {
+  if (!parsedData?.puntos?.length) return null;
+  let nearest = null;
+  let minDistance = Infinity;
+  // Limit work for very dense GPX files while preserving sufficient precision.
+  const step = Math.max(1, Math.floor(parsedData.puntos.length / 5000));
+  for (let index = 0; index < parsedData.puntos.length; index += step) {
+    const point = parsedData.puntos[index];
+    const distance = haversineDistance(lat, lon, point.lat, point.lon);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = point;
+    }
+  }
+  const lastPoint = parsedData.puntos[parsedData.puntos.length - 1];
+  const lastDistance = haversineDistance(lat, lon, lastPoint.lat, lastPoint.lon);
+  if (lastDistance < minDistance) {
+    minDistance = lastDistance;
+    nearest = lastPoint;
+  }
+  return nearest ? { point: nearest, distanceKm: minDistance } : null;
+}
+
+function setTrackLocationStatus(message, isError = false) {
+  const status = document.getElementById('trackLocationStatus');
+  if (!status) return;
+  status.classList.remove('hidden');
+  status.style.color = isError ? '#b91c1c' : '#334155';
+  status.textContent = message;
+}
+
+function stopTrackLocation() {
+  if (gpsWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+  gpsWatchId = null;
+  [gpsMarker, gpsAccuracyCircle, gpsRouteConnector, gpsNearestMarker].forEach(layer => {
+    if (map && layer && map.hasLayer(layer)) map.removeLayer(layer);
+  });
+  gpsMarker = null;
+  gpsAccuracyCircle = null;
+  gpsRouteConnector = null;
+  gpsNearestMarker = null;
+  const button = document.getElementById('btnTrackLocation');
+  button?.classList.remove('is-active');
+  if (button) {
+    button.title = 'Mostrar mi ubicación en la ruta';
+    button.setAttribute('aria-label', button.title);
+  }
+  const status = document.getElementById('trackLocationStatus');
+  status?.classList.add('hidden');
+}
+
+function updateTrackLocation(position) {
+  if (!map || !parsedData) return;
+  const { latitude, longitude, accuracy } = position.coords;
+  const latLng = [latitude, longitude];
+  const nearest = findNearestRoutePointToLocation(latitude, longitude);
+  if (!nearest) return;
+
+  if (!gpsMarker) {
+    const icon = L.divIcon({
+      html: '<div class="gps-position-marker"></div>',
+      className: '',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
+    gpsMarker = L.marker(latLng, { icon, zIndexOffset: 1000 }).addTo(map);
+    gpsAccuracyCircle = L.circle(latLng, {
+      radius: accuracy || 0,
+      color: '#2563eb',
+      weight: 1,
+      fillColor: '#60a5fa',
+      fillOpacity: 0.08,
+      interactive: false
+    }).addTo(map);
+    gpsNearestMarker = L.circleMarker([nearest.point.lat, nearest.point.lon], {
+      radius: 5,
+      color: '#ffffff',
+      weight: 2,
+      fillColor: '#0f172a',
+      fillOpacity: 1,
+      interactive: false
+    }).addTo(map);
+    gpsRouteConnector = L.polyline([latLng, [nearest.point.lat, nearest.point.lon]], {
+      color: '#2563eb',
+      weight: 2,
+      dashArray: '5 6',
+      opacity: 0.8,
+      interactive: false
+    }).addTo(map);
+  } else {
+    gpsMarker.setLatLng(latLng);
+    gpsAccuracyCircle.setLatLng(latLng).setRadius(accuracy || 0);
+    gpsNearestMarker.setLatLng([nearest.point.lat, nearest.point.lon]);
+    gpsRouteConnector.setLatLngs([latLng, [nearest.point.lat, nearest.point.lon]]);
+  }
+
+  const metersFromRoute = Math.round(nearest.distanceKm * 1000);
+  const routeText = metersFromRoute <= 20 ? 'Sobre la ruta' : `A ${metersFromRoute} m de la ruta`;
+  const statusText = `${routeText} · km ${nearest.point.distance.toFixed(1)} · ±${Math.round(accuracy || 0)} m`;
+  setTrackLocationStatus(statusText);
+  gpsMarker.bindTooltip(`<b>Tu ubicación</b><br>${routeText}<br>km ${nearest.point.distance.toFixed(1)}`, {
+    direction: 'top',
+    offset: [0, -10]
+  });
+  map.panInside(L.latLng(latitude, longitude), { padding: [45, 45] });
+}
+
+function toggleTrackLocation() {
+  if (!parsedData) {
+    alert('Carga o abre un track antes de mostrar tu ubicación.');
+    return;
+  }
+  if (!navigator.geolocation) {
+    setTrackLocationStatus('Este dispositivo no permite obtener la ubicación.', true);
+    return;
+  }
+  if (gpsWatchId !== null) {
+    stopTrackLocation();
+    return;
+  }
+
+  const button = document.getElementById('btnTrackLocation');
+  button?.classList.add('is-active');
+  if (button) {
+    button.title = 'Dejar de mostrar mi ubicación';
+    button.setAttribute('aria-label', button.title);
+  }
+  setTrackLocationStatus('Buscando señal GPS…');
+  gpsWatchId = navigator.geolocation.watchPosition(
+    updateTrackLocation,
+    error => {
+      const message = error.code === 1
+        ? 'Permiso de ubicación denegado.'
+        : error.code === 2
+          ? 'No se pudo obtener la ubicación.'
+          : 'La señal GPS está tardando demasiado.';
+      stopTrackLocation();
+      setTrackLocationStatus(message, true);
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
 }
 
 
@@ -815,6 +1214,8 @@ function processAndDisplay(gpxText, name) {
     // Render map and chart
     updateMap(parsedData.puntos);
     renderChart();
+    detectedClimbs = detectClimbs(parsedData.puntos);
+    renderDetectedClimbs(detectedClimbs);
   } catch (err) {
     alert('Error procesando GPX: ' + err.message);
   }
@@ -866,15 +1267,106 @@ async function saveCurrentTrack() {
   }
 }
 
+function createTrackThumbnail(track) {
+  let rawPoints = Array.isArray(track?.points) ? track.points : [];
+  if (rawPoints.length === 0 && track?.gpxContent) rawPoints = extractPointsFromGPX(track.gpxContent);
+  const points = rawPoints.map(point => Array.isArray(point)
+    ? { lat: Number(point[0]), lon: Number(point[1]) }
+    : { lat: Number(point.lat), lon: Number(point.lon ?? point.lng) }
+  ).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+
+  if (points.length < 2) {
+    return '<div class="track-thumbnail flex items-center justify-center text-gray-300" title="Sin vista previa">⌁</div>';
+  }
+
+  const sampled = [];
+  const sampleStep = Math.max(1, Math.ceil(points.length / 180));
+  for (let index = 0; index < points.length; index += sampleStep) sampled.push(points[index]);
+  if (sampled[sampled.length - 1] !== points[points.length - 1]) sampled.push(points[points.length - 1]);
+
+  const minLat = Math.min(...sampled.map(point => point.lat));
+  const maxLat = Math.max(...sampled.map(point => point.lat));
+  const minLon = Math.min(...sampled.map(point => point.lon));
+  const maxLon = Math.max(...sampled.map(point => point.lon));
+  const lonRange = Math.max(maxLon - minLon, 0.00001);
+  const latRange = Math.max(maxLat - minLat, 0.00001);
+  const scale = Math.min(84 / lonRange, 42 / latRange);
+  const routeWidth = lonRange * scale;
+  const routeHeight = latRange * scale;
+  const offsetX = (100 - routeWidth) / 2;
+  const offsetY = (58 - routeHeight) / 2;
+  const project = point => ({
+    x: offsetX + (point.lon - minLon) * scale,
+    y: offsetY + (maxLat - point.lat) * scale
+  });
+  const projected = sampled.map(project);
+  const path = projected.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  const start = projected[0];
+  const end = projected[projected.length - 1];
+
+  return `<div class="track-thumbnail" title="Vista previa de la ruta">
+    <svg class="track-thumbnail-fallback" viewBox="0 0 100 58" role="img" aria-label="Recorrido de la ruta">
+      <rect width="100" height="58" fill="#eff6ff"/>
+      <path d="M0 15H100M0 30H100M0 45H100M25 0V58M50 0V58M75 0V58" stroke="#dbeafe" stroke-width="0.7"/>
+      <path d="${path}" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="3" fill="#10b981" stroke="#fff" stroke-width="1.3"/>
+      <circle cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="3" fill="#ef4444" stroke="#fff" stroke-width="1.3"/>
+    </svg>
+    <div class="track-thumbnail-map" aria-hidden="true"></div>
+    <span class="track-thumbnail-attribution">© OSM</span>
+  </div>`;
+}
+
+function initializeTrackThumbnailMap(container, track) {
+  if (!container || !window.L || container.offsetWidth === 0) return;
+  let rawPoints = Array.isArray(track?.points) ? track.points : [];
+  if (rawPoints.length === 0 && track?.gpxContent) rawPoints = extractPointsFromGPX(track.gpxContent);
+  const latLngs = rawPoints.map(point => Array.isArray(point)
+    ? [Number(point[0]), Number(point[1])]
+    : [Number(point.lat), Number(point.lon ?? point.lng)]
+  ).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+  if (latLngs.length < 2) return;
+
+  try {
+    const miniMap = L.map(container, {
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      touchZoom: false,
+      tap: false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(miniMap);
+    const previewLine = L.polyline(latLngs, {
+      color: '#ef4444',
+      weight: 3,
+      opacity: 0.95,
+      interactive: false
+    }).addTo(miniMap);
+    miniMap.fitBounds(previewLine.getBounds(), { padding: [6, 6], animate: false });
+    historyThumbnailMaps.push(miniMap);
+  } catch (err) {
+    console.warn('Track thumbnail map warning:', err);
+  }
+}
+
 function renderHistoryTable(tracks) {
   const tbody = document.getElementById('tablaHistorial');
   const statsContainer = document.getElementById('historialStats');
   if (!tbody) return;
 
+  historyThumbnailMaps.forEach(thumbnailMap => thumbnailMap.remove());
+  historyThumbnailMaps = [];
+
   if (!tracks || tracks.length === 0) {
     if (statsContainer) statsContainer.classList.add('hidden');
     tbody.innerHTML = `
-      <tr><td colspan="5" class="px-4 py-12 text-center text-gray-400">
+      <tr><td colspan="6" class="px-4 py-12 text-center text-gray-400">
         <svg class="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
         </svg>
@@ -920,6 +1412,7 @@ function renderHistoryTable(tracks) {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-blue-50/60 cursor-pointer transition-colors group';
     tr.innerHTML = `
+      <td class="px-3 py-2">${createTrackThumbnail(t)}</td>
       <td class="px-4 py-3 whitespace-nowrap text-gray-400 text-xs">${fechaStr}</td>
       <td class="px-4 py-3 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
         <div class="flex items-center justify-between gap-2">
@@ -934,6 +1427,11 @@ function renderHistoryTable(tracks) {
           <button class="btn-edit p-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors" title="Editar en Creador">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
+          <button class="btn-duplicate p-1.5 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors" title="Duplicar como variante">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <rect x="8" y="8" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>
             </svg>
           </button>
           <button class="btn-reanalyze p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors" title="Ver análisis">
@@ -957,13 +1455,18 @@ function renderHistoryTable(tracks) {
 
     // Listeners
     tr.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit')) return;
+      if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit') || e.target.closest('.btn-duplicate')) return;
       reanalyzeTrack(t);
     });
 
     tr.querySelector('.btn-edit').addEventListener('click', (e) => {
       e.stopPropagation();
       if (typeof editTrackInCreator === 'function') editTrackInCreator(t);
+    });
+
+    tr.querySelector('.btn-duplicate').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof duplicateTrackInCreator === 'function') duplicateTrackInCreator(t);
     });
 
     tr.querySelector('.btn-reanalyze').addEventListener('click', (e) => {
@@ -985,6 +1488,7 @@ function renderHistoryTable(tracks) {
     });
 
     tbody.appendChild(tr);
+    initializeTrackThumbnailMap(tr.querySelector('.track-thumbnail-map'), t);
   });
 }
 
@@ -1201,6 +1705,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize map and chart
   initMap();
   initChart();
+  document.getElementById('btnTrackLocation')?.addEventListener('click', toggleTrackLocation);
 
   // Restore the Supabase session before the first cloud sync.
   initializeCloudAuth()

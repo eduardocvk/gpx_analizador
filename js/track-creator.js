@@ -22,6 +22,7 @@ const creator = {
   totalDistance: 0,
   elevationGain: 0,
   editingTrackId: null,           // Preserved track ID when editing an existing track
+  deleteMode: false,              // Click a waypoint marker to remove it
   isRouting: false                // Prevent double-clicks while routing
 };
 
@@ -75,7 +76,7 @@ function initCreator() {
 
   // Click handler
   creator.map.on('click', (e) => {
-    if (creator.isRouting) return;
+    if (creator.isRouting || creator.deleteMode) return;
     addWaypoint(e.latlng);
   });
 
@@ -116,6 +117,8 @@ function setupCreatorEvents() {
   // Buttons
   document.getElementById('btnUndo')?.addEventListener('click', undoLastAction);
   document.getElementById('btnReturnToStart')?.addEventListener('click', returnToStart);
+  document.getElementById('btnReverseTrack')?.addEventListener('click', reverseCreatedTrack);
+  document.getElementById('btnDeletePoint')?.addEventListener('click', () => setDeletePointMode(!creator.deleteMode));
   document.getElementById('btnClearTrack')?.addEventListener('click', clearCreatedTrack);
   document.getElementById('btnSaveCreated')?.addEventListener('click', saveCreatedTrack);
   document.getElementById('btnDownloadCreated')?.addEventListener('click', downloadCreatedTrack);
@@ -364,17 +367,23 @@ function indexToLetter(index) {
 
 function addWaypointMarker(latlng, index) {
   const isFirst = index === 0;
-  const color = isFirst ? '#10b981' : '#3b82f6';
+  const color = creator.deleteMode ? '#e11d48' : (isFirst ? '#10b981' : '#3b82f6');
   const label = indexToLetter(index);
 
   const icon = L.divIcon({
-    html: `<div style="background:${color};color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:grab;">${label}</div>`,
+    html: `<div style="background:${color};color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:${creator.deleteMode ? 'pointer' : 'grab'};">${creator.deleteMode ? '−' : label}</div>`,
     className: '',
     iconSize: [24, 24],
     iconAnchor: [12, 12]
   });
 
-  const marker = L.marker(latlng, { icon, draggable: true }).addTo(creator.map);
+  const marker = L.marker(latlng, { icon, draggable: !creator.deleteMode }).addTo(creator.map);
+
+  marker.on('click', e => {
+    if (!creator.deleteMode) return;
+    if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+    deleteWaypointAt(index);
+  });
 
   marker.on('dragend', async () => {
     pushUndoState();
@@ -656,7 +665,7 @@ function updateMidpoints() {
   creator.midpointMarkers.forEach(m => creator.map.removeLayer(m));
   creator.midpointMarkers = [];
 
-  if (creator.waypoints.length < 2) return;
+  if (creator.waypoints.length < 2 || creator.deleteMode) return;
 
   for (let i = 0; i < creator.waypoints.length - 1; i++) {
     const a = creator.waypoints[i];
@@ -723,6 +732,97 @@ async function insertWaypointAt(index, latlng) {
   rebuildPolyline();
   updateMidpoints();
   updateCreatorStats();
+}
+
+function setDeletePointMode(active) {
+  creator.deleteMode = Boolean(active && creator.waypoints.length > 0);
+  const button = document.getElementById('btnDeletePoint');
+  button?.classList.toggle('is-active', creator.deleteMode);
+  if (button) {
+    button.title = creator.deleteMode
+      ? 'Pulsa un punto rojo para eliminarlo'
+      : 'Seleccionar un punto para eliminarlo';
+  }
+  rebuildAllMarkers();
+  updateMidpoints();
+
+  const status = document.getElementById('creatorSaveStatus');
+  if (status) {
+    status.className = creator.deleteMode ? 'text-xs font-bold text-rose-600' : 'text-xs font-bold';
+    status.textContent = creator.deleteMode ? 'Pulsa el punto que quieras eliminar' : '';
+  }
+}
+
+async function deleteWaypointAt(index) {
+  if (creator.isRouting || index < 0 || index >= creator.waypoints.length) return;
+  pushUndoState();
+  const previousState = creator.undoStack[creator.undoStack.length - 1];
+  const oldCount = creator.waypoints.length;
+  creator.waypoints.splice(index, 1);
+
+  creator.isRouting = true;
+  showRoutingSpinner(true);
+  try {
+    if (oldCount <= 2) {
+      creator.routeSegments = [];
+    } else if (index === 0) {
+      creator.routeSegments.shift();
+    } else if (index === oldCount - 1) {
+      creator.routeSegments.pop();
+    } else {
+      const previous = creator.waypoints[index - 1];
+      const next = creator.waypoints[index];
+      let replacement;
+      if (creator.mode === 'road') {
+        replacement = await fetchRoute(previous, next);
+      } else {
+        replacement = await enrichElevations(interpolateSegmentPoints(previous, next, 0.05));
+      }
+      creator.routeSegments.splice(index - 1, 2, replacement);
+    }
+
+    rebuildAllMarkers();
+    rebuildPolyline();
+    updateMidpoints();
+    updateCreatorStats();
+    if (creator.waypoints.length === 0) setDeletePointMode(false);
+  } catch (err) {
+    console.error('Delete waypoint error:', err);
+    creator.undoStack.pop();
+    creator.waypoints = previousState.waypoints;
+    creator.routeSegments = previousState.routeSegments;
+    rebuildAllMarkers();
+    rebuildPolyline();
+    updateMidpoints();
+    updateCreatorStats();
+    alert('No se pudo recalcular la ruta al eliminar el punto: ' + err.message);
+  } finally {
+    creator.isRouting = false;
+    showRoutingSpinner(false);
+  }
+}
+
+function reverseCreatedTrack() {
+  if (creator.waypoints.length < 2 || creator.isRouting) return;
+  pushUndoState();
+  setDeletePointMode(false);
+  creator.waypoints = [...creator.waypoints].reverse();
+  creator.routeSegments = [...creator.routeSegments]
+    .reverse()
+    .map(segment => [...segment].reverse().map(point => [...point]));
+  rebuildAllMarkers();
+  rebuildPolyline();
+  updateMidpoints();
+  updateCreatorStats();
+
+  const status = document.getElementById('creatorSaveStatus');
+  if (status) {
+    status.className = 'text-xs font-bold text-blue-600';
+    status.textContent = '↔ Sentido de la ruta invertido';
+    setTimeout(() => {
+      if (status.textContent.includes('invertido')) status.textContent = '';
+    }, 2200);
+  }
 }
 
 
@@ -823,6 +923,8 @@ function clearCreatedTrack() {
   creator.waypoints = [];
   creator.routeSegments = [];
   creator.editingTrackId = null;
+  creator.deleteMode = false;
+  document.getElementById('btnDeletePoint')?.classList.remove('is-active');
 
   // Remove all from map
   creator.markers.forEach(m => creator.map.removeLayer(m));
@@ -903,8 +1005,9 @@ async function saveCreatedTrack() {
 // 12. EDIT EXISTING SAVED TRACK
 // =============================================
 
-function editTrackInCreator(track) {
+function editTrackInCreator(track, options = {}) {
   try {
+    const asCopy = Boolean(options.asCopy);
     const safeGPX = (typeof ensureValidGPXContent === 'function') ? ensureValidGPXContent(track) : track.gpxContent;
     const parsed = parseGPX(safeGPX);
     if (!parsed.puntos || parsed.puntos.length === 0) {
@@ -920,7 +1023,9 @@ function editTrackInCreator(track) {
     creator.waypoints = [];
     creator.routeSegments = [];
     creator.undoStack = [];
-    creator.editingTrackId = track.id;
+    creator.editingTrackId = asCopy ? null : track.id;
+    creator.deleteMode = false;
+    document.getElementById('btnDeletePoint')?.classList.remove('is-active');
 
     const points = parsed.puntos;
 
@@ -955,7 +1060,7 @@ function editTrackInCreator(track) {
     }
 
     const nameInput = document.getElementById('creatorTrackName');
-    if (nameInput) nameInput.value = track.nombre;
+    if (nameInput) nameInput.value = asCopy ? `${track.nombre} - Variante` : track.nombre;
 
     rebuildAllMarkers();
     rebuildPolyline();
@@ -968,10 +1073,23 @@ function editTrackInCreator(track) {
 
     switchToTab('crear');
 
+    const status = document.getElementById('creatorSaveStatus');
+    if (asCopy && status) {
+      status.className = 'text-xs font-bold text-violet-600';
+      status.textContent = 'Copia abierta: se guardará como una ruta nueva';
+      setTimeout(() => {
+        if (status.textContent.includes('Copia abierta')) status.textContent = '';
+      }, 3500);
+    }
+
   } catch (err) {
     console.error('Error opening track for editing:', err);
     alert('Error al abrir el track para editar: ' + err.message);
   }
+}
+
+function duplicateTrackInCreator(track) {
+  editTrackInCreator(track, { asCopy: true });
 }
 
 
@@ -1011,9 +1129,15 @@ function updateCreatorStats() {
   const hasTrack = creator.waypoints.length >= 2;
   document.getElementById('btnUndo').disabled = creator.undoStack.length === 0;
   document.getElementById('btnReturnToStart').disabled = !hasTrack;
+  document.getElementById('btnReverseTrack').disabled = !hasTrack;
+  document.getElementById('btnDeletePoint').disabled = !hasPoints;
   document.getElementById('btnClearTrack').disabled = !hasPoints;
   document.getElementById('btnSaveCreated').disabled = !hasTrack;
   document.getElementById('btnDownloadCreated').disabled = !hasTrack;
+  if (!hasPoints && creator.deleteMode) {
+    creator.deleteMode = false;
+    document.getElementById('btnDeletePoint')?.classList.remove('is-active');
+  }
 
   // Render live elevation chart
   renderCreatorChart(allPoints);

@@ -7,6 +7,10 @@ Analizador de rutas GPX con mapas interactivos y perfiles altimétricos coloread
 - 📂 **Carga de archivos GPX** desde el dispositivo
 - 🗺️ **Mapa interactivo** (OpenStreetMap + Leaflet)
 - 📊 **Perfil altimétrico** coloreado por pendiente (ECharts)
+- ⛰️ **Detección automática de subidas y puertos** con categoría, desnivel y pendientes
+- 📍 **Ubicación GPS sobre la ruta** con distancia al track y kilómetro más cercano
+- ✏️ **Creador y editor de rutas** con inversión, eliminación de puntos y variantes
+- 🖼️ **Miniaturas cartográficas** de los tracks guardados
 - 💾 **Guardado local y en la nube** (IndexedDB + Supabase)
 - 🔄 **Sincronización entre móvil y ordenador** mediante acceso seguro por correo
 - 📱 **PWA instalable** en Android, iOS y escritorio
