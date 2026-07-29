@@ -1322,15 +1322,10 @@ function createTrackThumbnail(track) {
     const y = 66 - ((point.ele - minElevation) / elevationRange) * 14;
     return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
   }).join(' ');
-  const routeStart = projectedRoute[0];
-  const routeEnd = projectedRoute[projectedRoute.length - 1];
-
   return `<div class="track-thumbnail" title="Silueta y perfil de la ruta">
     <svg viewBox="0 0 120 72" role="img" aria-label="Silueta y perfil altimétrico de la ruta">
       <rect width="120" height="72" fill="#ffffff"/>
       <path d="${routePath}" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${routeStart.x.toFixed(1)}" cy="${routeStart.y.toFixed(1)}" r="2.5" fill="#111827"/>
-      <circle cx="${routeEnd.x.toFixed(1)}" cy="${routeEnd.y.toFixed(1)}" r="2.5" fill="#ffffff" stroke="#111827" stroke-width="1.5"/>
       <path d="M7 46H113" stroke="#e5e7eb" stroke-width="1"/>
       <path d="${profilePath}" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
@@ -1339,11 +1334,20 @@ function createTrackThumbnail(track) {
 
 function renderHistoryTable(tracks) {
   const tbody = document.getElementById('tablaHistorial');
+  const mobileCards = document.getElementById('trackCardsMobile');
   const statsContainer = document.getElementById('historialStats');
   if (!tbody) return;
 
   if (!tracks || tracks.length === 0) {
     if (statsContainer) statsContainer.classList.add('hidden');
+    if (mobileCards) {
+      mobileCards.innerHTML = `
+        <div class="track-mobile-empty">
+          <p class="text-3xl mb-2">⌁</p>
+          <p class="font-bold">No hay tracks guardados</p>
+          <p class="text-xs mt-1">Analiza y guarda tu primera ruta</p>
+        </div>`;
+    }
     tbody.innerHTML = `
       <tr><td colspan="6" class="px-4 py-12 text-center text-gray-400">
         <svg class="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1378,6 +1382,7 @@ function renderHistoryTable(tracks) {
 
   // Render table rows
   tbody.innerHTML = '';
+  if (mobileCards) mobileCards.innerHTML = '';
   tracks.forEach(t => {
     const fecha = new Date(t.fecha);
     const fechaStr = fecha.toLocaleDateString('es-ES', {
@@ -1432,41 +1437,72 @@ function renderHistoryTable(tracks) {
         </div>
       </td>`;
 
-    // Listeners
-    tr.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-download') || e.target.closest('.btn-delete') || e.target.closest('.btn-reanalyze') || e.target.closest('.btn-edit') || e.target.closest('.btn-duplicate')) return;
-      reanalyzeTrack(t);
-    });
-
-    tr.querySelector('.btn-edit').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (typeof editTrackInCreator === 'function') editTrackInCreator(t);
-    });
-
-    tr.querySelector('.btn-duplicate').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (typeof duplicateTrackInCreator === 'function') duplicateTrackInCreator(t);
-    });
-
-    tr.querySelector('.btn-reanalyze').addEventListener('click', (e) => {
-      e.stopPropagation();
-      reanalyzeTrack(t);
-    });
-
-    tr.querySelector('.btn-download').addEventListener('click', (e) => {
-      e.stopPropagation();
-      downloadGPX(t.gpxContent, t.nombre + '.gpx');
-    });
-
-    tr.querySelector('.btn-delete').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (confirm(`¿Eliminar "${t.nombre}"?`)) {
-        await deleteTrackFromDB(t.id);
-        loadHistory();
-      }
-    });
-
     tbody.appendChild(tr);
+    bindTrackActions(tr, t, true);
+
+    if (mobileCards) {
+      const card = document.createElement('article');
+      card.className = 'track-mobile-card';
+      card.innerHTML = `
+        <div class="track-mobile-header">
+          ${createTrackThumbnail(t)}
+          <div class="min-w-0 flex-1">
+            <p class="track-mobile-name">${escapeHtml(t.nombre)}</p>
+            <div class="mt-1.5">${cloudBadge}</div>
+          </div>
+        </div>
+        <div class="track-mobile-stats">
+          <div><span>Fecha</span><strong>${fechaStr}</strong></div>
+          <div><span>Distancia</span><strong class="text-blue-600">${(t.distancia || 0).toFixed(2)} km</strong></div>
+          <div><span>Desnivel +</span><strong class="text-emerald-600">+${(t.desnivelPositivo || 0).toLocaleString('es-ES')} m</strong></div>
+          <div><span>Desnivel −</span><strong class="text-blue-500">−${(t.desnivelNegativo || 0).toLocaleString('es-ES')} m</strong></div>
+          <div><span>Alt. máxima</span><strong>${(t.altitudMax || 0).toLocaleString('es-ES')} m</strong></div>
+          <div><span>Alt. mínima</span><strong>${(t.altitudMin || 0).toLocaleString('es-ES')} m</strong></div>
+        </div>
+        <div class="track-mobile-actions">
+          <button class="btn-edit" type="button">✏️ <span>Editar</span></button>
+          <button class="btn-duplicate" type="button">⧉ <span>Variante</span></button>
+          <button class="btn-reanalyze" type="button">◉ <span>Analizar</span></button>
+          <button class="btn-download" type="button">↓ <span>GPX</span></button>
+          <button class="btn-delete track-mobile-delete" type="button">🗑 <span>Eliminar</span></button>
+        </div>`;
+      mobileCards.appendChild(card);
+      bindTrackActions(card, t, false);
+    }
+  });
+}
+
+function bindTrackActions(container, track, openOnContainerClick) {
+  if (openOnContainerClick) {
+    container.addEventListener('click', event => {
+      if (event.target.closest('button')) return;
+      reanalyzeTrack(track);
+    });
+  }
+
+  container.querySelector('.btn-edit')?.addEventListener('click', event => {
+    event.stopPropagation();
+    if (typeof editTrackInCreator === 'function') editTrackInCreator(track);
+  });
+  container.querySelector('.btn-duplicate')?.addEventListener('click', event => {
+    event.stopPropagation();
+    if (typeof duplicateTrackInCreator === 'function') duplicateTrackInCreator(track);
+  });
+  container.querySelector('.btn-reanalyze')?.addEventListener('click', event => {
+    event.stopPropagation();
+    reanalyzeTrack(track);
+  });
+  container.querySelector('.btn-download')?.addEventListener('click', event => {
+    event.stopPropagation();
+    const safeGPX = ensureValidGPXContent(track);
+    downloadGPX(safeGPX, track.nombre + '.gpx');
+  });
+  container.querySelector('.btn-delete')?.addEventListener('click', async event => {
+    event.stopPropagation();
+    if (confirm(`¿Eliminar "${track.nombre}"?`)) {
+      await deleteTrackFromDB(track.id);
+      loadHistory();
+    }
   });
 }
 

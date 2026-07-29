@@ -346,6 +346,126 @@ body.profile-modal-open {
   min-width: 760px;
 }
 
+.track-cards-mobile {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .tracks-table-desktop {
+    display: none;
+  }
+
+  .track-cards-mobile {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .track-mobile-card,
+  .track-mobile-empty {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  }
+
+  .track-mobile-card {
+    padding: 0.8rem;
+  }
+
+  .track-mobile-empty {
+    padding: 2.5rem 1rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  .track-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .track-mobile-name {
+    overflow: hidden;
+    color: #0f172a;
+    font-size: 0.95rem;
+    font-weight: 850;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+  }
+
+  .track-mobile-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin-top: 0.8rem;
+    padding: 0.7rem 0;
+    border-top: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .track-mobile-stats div {
+    min-width: 0;
+  }
+
+  .track-mobile-stats span,
+  .track-mobile-stats strong {
+    display: block;
+  }
+
+  .track-mobile-stats span {
+    margin-bottom: 0.1rem;
+    color: #94a3b8;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .track-mobile-stats strong {
+    overflow: hidden;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .track-mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-top: 0.7rem;
+  }
+
+  .track-mobile-actions button {
+    min-height: 36px;
+    padding: 0.4rem 0.3rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.6rem;
+    color: #475569;
+    background: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .track-mobile-actions button:active {
+    transform: scale(0.97);
+  }
+
+  .track-mobile-actions .btn-reanalyze {
+    color: #2563eb;
+    border-color: #bfdbfe;
+    background: #eff6ff;
+  }
+
+  .track-mobile-actions .track-mobile-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+    background: #fef2f2;
+  }
+}
+
 /* --- File Input --- */
 input[type="file"]::file-selector-button {
   font-family: 'Inter', system-ui, sans-serif;

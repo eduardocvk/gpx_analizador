@@ -30,7 +30,7 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css?v=13">
+  <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 
 <body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
@@ -265,8 +265,11 @@
         <div class="flex justify-center gap-8 md:gap-16"></div>
       </div>
 
-      <!-- Tracks Table -->
-      <div class="glass-card rounded-xl shadow-sm overflow-hidden">
+      <!-- Mobile track cards -->
+      <div id="trackCardsMobile" class="track-cards-mobile"></div>
+
+      <!-- Desktop tracks table -->
+      <div class="glass-card rounded-xl shadow-sm overflow-hidden tracks-table-desktop">
         <div class="table-container">
           <table class="w-full text-sm">
             <thead>
@@ -468,7 +471,7 @@
 
   <!-- App Logic (Cache-busted) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/app.js?v=13"></script>
-  <script src="js/track-creator.js?v=13"></script>
+  <script src="js/app.js?v=14"></script>
+  <script src="js/track-creator.js?v=14"></script>
 </body>
 </html>
