@@ -29,8 +29,12 @@
   <!-- ECharts -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 
+  <!-- MapLibre GL (3D route replay) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css?v=15">
+  <link rel="stylesheet" href="css/style.css?v=16">
 </head>
 
 <body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
@@ -122,8 +126,12 @@
       <!-- Track Stats -->
       <div id="statusContainer" class="hidden glass-card p-4 rounded-xl shadow-sm border-l-4 border-blue-500 fade-in">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
+          <div class="flex flex-wrap items-center gap-3">
             <h2 id="trackName" class="font-black text-gray-900 text-lg"></h2>
+            <button id="btnOpenRouteReplay" type="button" disabled class="route-replay-launch" title="Recorrer la ruta sobre el terreno en 3D">
+              <span aria-hidden="true">▶</span>
+              <span>Recorrido 3D</span>
+            </button>
           </div>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-6">
             <div class="text-center">
@@ -464,6 +472,47 @@
     </section>
   </main>
 
+  <!-- ===== 3D ROUTE REPLAY ===== -->
+  <section id="routeReplayModal" class="route-replay-modal hidden" role="dialog" aria-modal="true" aria-labelledby="routeReplayTitle">
+    <div id="route3DMap" class="route-replay-map"></div>
+    <div class="route-replay-shade"></div>
+
+    <header class="route-replay-header">
+      <div class="min-w-0">
+        <p class="route-replay-kicker">RECORRIDO 3D</p>
+        <h2 id="routeReplayTitle" class="route-replay-title">Ruta</h2>
+      </div>
+      <button id="btnCloseRouteReplay" type="button" class="route-replay-icon-btn" aria-label="Cerrar recorrido 3D" title="Cerrar">×</button>
+    </header>
+
+    <div class="route-replay-hud" aria-live="polite">
+      <div><span>KM</span><strong id="replayKm">0.0</strong></div>
+      <div><span>ALTITUD</span><strong id="replayElevation">0 m</strong></div>
+      <div><span>PENDIENTE</span><strong id="replaySlope">0.0%</strong></div>
+      <div><span>PROGRESO</span><strong id="replayPercent">0%</strong></div>
+    </div>
+
+    <div id="routeReplayLoading" class="route-replay-loading">
+      <span class="route-replay-spinner"></span>
+      <strong>Preparando el terreno…</strong>
+    </div>
+
+    <div class="route-replay-controls">
+      <input id="routeReplayProgress" type="range" min="0" max="1000" value="0" aria-label="Progreso del recorrido">
+      <div class="route-replay-buttons">
+        <button id="btnReplayToggle" type="button" class="route-replay-primary">▶ Reproducir</button>
+        <button id="btnReplayRestart" type="button">↺ Reiniciar</button>
+        <label for="routeReplaySpeed">Velocidad</label>
+        <select id="routeReplaySpeed" aria-label="Velocidad del recorrido">
+          <option value="0.5">0,5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== FOOTER ===== -->
   <footer class="bg-slate-900 text-gray-400 text-center py-3 text-xs">
     <p>GPX Tracker &copy; 2026 &middot; Datos de mapa: <a href="https://www.openstreetmap.org/copyright" class="underline hover:text-white transition-colors" target="_blank" rel="noopener">OpenStreetMap</a></p>
@@ -471,7 +520,8 @@
 
   <!-- App Logic (Cache-busted) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/app.js?v=15"></script>
-  <script src="js/track-creator.js?v=15"></script>
+  <script src="js/app.js?v=16"></script>
+  <script src="js/route-replay.js?v=16"></script>
+  <script src="js/track-creator.js?v=16"></script>
 </body>
 </html>

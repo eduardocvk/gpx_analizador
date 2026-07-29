@@ -1209,6 +1209,7 @@ function processAndDisplay(gpxText, name) {
     document.getElementById('noDataMessage').classList.add('hidden');
     document.getElementById('slopeLegend').classList.remove('hidden');
     document.getElementById('btnGuardar').disabled = false;
+    document.getElementById('btnOpenRouteReplay').disabled = false;
 
     // Render map and chart
     updateMap(parsedData.puntos);
@@ -1757,6 +1758,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize map and chart
   initMap();
   initChart();
+  if (typeof initRouteReplayUI === 'function') initRouteReplayUI();
   consumeSharedGPX();
   document.getElementById('btnTrackLocation')?.addEventListener('click', toggleTrackLocation);
 

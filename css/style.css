@@ -182,6 +182,271 @@ body.profile-modal-open {
   overflow: hidden;
 }
 
+/* --- 3D route replay --- */
+.route-replay-launch {
+  min-height: 34px;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #0f766e);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.2);
+  font-size: 11px;
+  font-weight: 850;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+.route-replay-launch:active {
+  transform: scale(0.97);
+}
+
+.route-replay-launch:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.route-replay-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  overflow: hidden;
+  color: #ffffff;
+  background: #0f172a;
+}
+
+.route-replay-modal.hidden {
+  display: none;
+}
+
+.route-replay-map {
+  position: absolute;
+  inset: 0;
+}
+
+.route-replay-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.72) 0, transparent 25%, transparent 65%, rgba(2, 6, 23, 0.78) 100%);
+}
+
+.route-replay-header {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: 16px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.route-replay-header > * {
+  pointer-events: auto;
+}
+
+.route-replay-kicker {
+  color: #67e8f9;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.route-replay-title {
+  overflow: hidden;
+  max-width: min(70vw, 700px);
+  margin-top: 0.15rem;
+  font-size: clamp(1rem, 3vw, 1.45rem);
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+}
+
+.route-replay-icon-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.route-replay-hud {
+  position: absolute;
+  top: max(76px, calc(env(safe-area-inset-top) + 64px));
+  left: 16px;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.8rem;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.28);
+}
+
+.route-replay-hud div {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.route-replay-hud span,
+.route-replay-hud strong {
+  display: block;
+}
+
+.route-replay-hud span {
+  color: #94a3b8;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.route-replay-hud strong {
+  margin-top: 0.12rem;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.route-replay-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.8rem;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(12px);
+  font-size: 12px;
+}
+
+.route-replay-loading.hidden {
+  display: none;
+}
+
+.route-replay-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #22d3ee;
+  border-radius: 50%;
+  animation: routeReplaySpin 0.8s linear infinite;
+}
+
+@keyframes routeReplaySpin {
+  to { transform: rotate(360deg); }
+}
+
+.route-replay-controls {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 5;
+  width: min(680px, calc(100% - 24px));
+  padding: 0.75rem;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 40px rgba(2, 6, 23, 0.38);
+}
+
+#routeReplayProgress {
+  width: 100%;
+  accent-color: #22d3ee;
+  cursor: pointer;
+}
+
+.route-replay-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.route-replay-buttons button,
+.route-replay-buttons select {
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.65rem;
+  padding: 0.4rem 0.75rem;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.route-replay-buttons .route-replay-primary {
+  border-color: #0891b2;
+  background: #0891b2;
+}
+
+.route-replay-buttons label {
+  margin-left: auto;
+  color: #cbd5e1;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.route-replay-buttons select {
+  padding-right: 1.6rem;
+}
+
+body.route-replay-open {
+  overflow: hidden;
+}
+
+@media (max-width: 520px) {
+  .route-replay-hud {
+    right: 16px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .route-replay-hud div {
+    padding: 0.45rem 0.35rem;
+    text-align: center;
+  }
+
+  .route-replay-hud strong {
+    font-size: 11px;
+  }
+
+  .route-replay-buttons {
+    flex-wrap: wrap;
+  }
+
+  .route-replay-buttons button {
+    flex: 1 1 42%;
+  }
+
+  .route-replay-buttons label {
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .profile-card.profile-expanded {
     inset: 0;
