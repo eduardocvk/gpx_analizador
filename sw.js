@@ -3,16 +3,18 @@
 // Cache-first for app shell, network-first for map tiles
 // =============================================
 
-const CACHE_NAME = 'gpx-tracker-v14';
+const CACHE_NAME = 'gpx-tracker-v15';
 const TILES_CACHE = 'gpx-tracker-tiles-v1';
+const SHARED_GPX_CACHE = 'gpx-tracker-shared-v1';
+const MAX_SHARED_GPX_SIZE = 25 * 1024 * 1024;
 const MAX_TILES = 500;
 
 const APP_SHELL = [
   './',
   './index.html',
-  './css/style.css?v=14',
-  './js/app.js?v=14',
-  './js/track-creator.js?v=14',
+  './css/style.css?v=15',
+  './js/app.js?v=15',
+  './js/track-creator.js?v=15',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -33,18 +35,63 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: clean old caches completely
+// Activate: remove only obsolete app caches.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.map(k => caches.delete(k)))
+      Promise.all(keys
+        .filter(key => key.startsWith('gpx-tracker-v') && key !== CACHE_NAME)
+        .map(key => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
 
+async function receiveSharedGPX(request) {
+  const redirectUrl = new URL('./?shared-gpx=1', self.registration.scope);
+
+  try {
+    const formData = await request.formData();
+    const file = formData.get('gpx');
+    const fileName = file?.name || '';
+
+    if (!file || typeof file.arrayBuffer !== 'function' || !/\.gpx$/i.test(fileName)) {
+      redirectUrl.searchParams.set('share-error', 'invalid');
+      redirectUrl.searchParams.delete('shared-gpx');
+      return Response.redirect(redirectUrl.href, 303);
+    }
+
+    if (file.size > MAX_SHARED_GPX_SIZE) {
+      redirectUrl.searchParams.set('share-error', 'too-large');
+      redirectUrl.searchParams.delete('shared-gpx');
+      return Response.redirect(redirectUrl.href, 303);
+    }
+
+    const cache = await caches.open(SHARED_GPX_CACHE);
+    const cacheKey = new URL('./__shared-gpx', self.registration.scope).href;
+    const safeName = encodeURIComponent(fileName);
+    await cache.put(cacheKey, new Response(file, {
+      headers: {
+        'Content-Type': file.type || 'application/gpx+xml',
+        'X-GPX-File-Name': safeName
+      }
+    }));
+
+    return Response.redirect(redirectUrl.href, 303);
+  } catch (error) {
+    redirectUrl.searchParams.set('share-error', 'read');
+    redirectUrl.searchParams.delete('shared-gpx');
+    return Response.redirect(redirectUrl.href, 303);
+  }
+}
+
 // Fetch strategy
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
+
+  if (event.request.method === 'POST' && new URL(url).pathname.endsWith('/share-target')) {
+    event.respondWith(receiveSharedGPX(event.request));
+    return;
+  }
 
   // Bypass Service Worker cache completely for cloud API requests and dynamic data
   if (url.includes('.supabase.co') || url.includes('openrouteservice.org') || url.includes('nominatim.openstreetmap.org')) {

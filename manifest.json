@@ -9,6 +9,25 @@
   "theme_color": "#0f172a",
   "orientation": "any",
   "categories": ["sports", "navigation", "fitness"],
+  "share_target": {
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "gpx",
+          "accept": [
+            "application/gpx+xml",
+            "application/xml",
+            "text/xml",
+            "application/octet-stream",
+            ".gpx"
+          ]
+        }
+      ]
+    }
+  },
   "icons": [
     {
       "src": "./icons/icon-192.png",

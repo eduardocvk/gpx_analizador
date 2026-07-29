@@ -1229,6 +1229,44 @@ function handleFileSelect(e) {
   reader.readAsText(file);
 }
 
+async function consumeSharedGPX() {
+  const url = new URL(window.location.href);
+  const sharedGPX = url.searchParams.get('shared-gpx');
+  const shareError = url.searchParams.get('share-error');
+  if (!sharedGPX && !shareError) return;
+
+  url.searchParams.delete('shared-gpx');
+  url.searchParams.delete('share-error');
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+
+  if (shareError) {
+    const message = shareError === 'too-large'
+      ? 'El archivo GPX compartido supera el límite de 25 MB.'
+      : 'No se pudo abrir el archivo compartido. Comprueba que sea un GPX válido.';
+    alert(message);
+    return;
+  }
+
+  try {
+    const cache = await caches.open('gpx-tracker-shared-v1');
+    const cacheKey = new URL('./__shared-gpx', document.baseURI).href;
+    const response = await cache.match(cacheKey);
+    if (!response) throw new Error('No se encontró el archivo compartido');
+
+    await cache.delete(cacheKey);
+    const encodedName = response.headers.get('X-GPX-File-Name') || 'track.gpx';
+    const sharedFileName = decodeURIComponent(encodedName);
+    const gpxText = await response.text();
+    if (!/<gpx[\s>]/i.test(gpxText)) throw new Error('El archivo no contiene datos GPX');
+
+    switchToTab('analizar');
+    processAndDisplay(gpxText, sharedFileName);
+  } catch (error) {
+    console.warn('Error opening shared GPX:', error);
+    alert('No se pudo abrir el GPX compartido: ' + error.message);
+  }
+}
+
 
 // =============================================
 // 6. TRACK SAVE / HISTORY
@@ -1719,6 +1757,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize map and chart
   initMap();
   initChart();
+  consumeSharedGPX();
   document.getElementById('btnTrackLocation')?.addEventListener('click', toggleTrackLocation);
 
   // Restore the Supabase session before the first cloud sync.
