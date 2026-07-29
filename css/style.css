@@ -403,6 +403,16 @@ body.profile-modal-open {
   background: #0891b2;
 }
 
+.route-replay-buttons .route-replay-danger {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(127, 29, 29, 0.45);
+}
+
+.route-replay-buttons .hidden {
+  display: none;
+}
+
 .route-replay-buttons label {
   margin-left: auto;
   color: #cbd5e1;
@@ -415,8 +425,73 @@ body.profile-modal-open {
   padding-right: 1.6rem;
 }
 
+.route-replay-share-status {
+  min-height: 14px;
+  margin-top: 0.35rem;
+  color: #a5f3fc;
+  font-size: 9px;
+  font-weight: 750;
+  text-align: center;
+}
+
 body.route-replay-open {
   overflow: hidden;
+}
+
+/* --- Shared 3D replay links --- */
+.shared-replays-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.shared-replay-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.shared-replay-item-name {
+  overflow: hidden;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-replay-item-date {
+  margin-top: 0.1rem;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.shared-replay-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+
+.shared-replay-actions button {
+  min-height: 32px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.55rem;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.shared-replay-actions .revoke-shared-replay {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
 }
 
 @media (max-width: 520px) {
@@ -439,11 +514,20 @@ body.route-replay-open {
   }
 
   .route-replay-buttons button {
-    flex: 1 1 42%;
+    flex: 1 1 38%;
   }
 
   .route-replay-buttons label {
     margin-left: 0;
+  }
+
+  .shared-replay-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shared-replay-actions button {
+    flex: 1;
   }
 }
 

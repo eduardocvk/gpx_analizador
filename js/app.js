@@ -45,6 +45,8 @@ function updateCloudAccountUI() {
   signedInPanel?.classList.toggle('hidden', !isSignedIn);
   if (accountEmail) accountEmail.textContent = cloudSession?.user?.email || '';
   if (forceSyncBtn) forceSyncBtn.disabled = !isSignedIn;
+  document.getElementById('sharedReplaysPanel')?.classList.toggle('hidden', !isSignedIn);
+  if (isSignedIn && typeof loadSharedReplayList === 'function') loadSharedReplayList();
 }
 
 async function initializeCloudAuth() {
@@ -1195,6 +1197,7 @@ function processAndDisplay(gpxText, name) {
     parsedData = parseGPX(gpxText);
     fileContent = gpxText;
     if (name) fileName = name;
+    if (typeof resetRouteReplayShare === 'function') resetRouteReplayShare();
 
     // Update stats UI
     document.getElementById('trackName').textContent = parsedData.nombre;

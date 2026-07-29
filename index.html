@@ -34,7 +34,7 @@
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=18">
 </head>
 
 <body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
@@ -254,6 +254,17 @@
           </button>
         </div>
       </div>
+
+      <section id="sharedReplaysPanel" class="hidden glass-card p-3 rounded-xl shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-2 mb-2.5">
+          <div>
+            <h2 class="text-sm font-extrabold text-gray-900">🔗 Enlaces de recorridos 3D</h2>
+            <p class="text-[11px] text-gray-500 mt-0.5">Cualquiera con el enlace puede reproducir esa ruta. Puedes desactivarlo cuando quieras.</p>
+          </div>
+          <span id="sharedReplaysStatus" class="text-[10px] font-bold text-gray-500"></span>
+        </div>
+        <div id="sharedReplaysList" class="shared-replays-list"></div>
+      </section>
 
       <div class="flex flex-wrap items-center justify-between gap-2 px-1">
         <h2 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Mis Tracks Guardados</h2>
@@ -502,6 +513,8 @@
       <div class="route-replay-buttons">
         <button id="btnReplayToggle" type="button" class="route-replay-primary">▶ Reproducir</button>
         <button id="btnReplayRestart" type="button">↺ Reiniciar</button>
+        <button id="btnShareRouteReplay" type="button">↗ Compartir enlace</button>
+        <button id="btnRevokeRouteReplay" type="button" class="hidden route-replay-danger">✕ Desactivar</button>
         <label for="routeReplaySpeed">Velocidad</label>
         <select id="routeReplaySpeed" aria-label="Velocidad del recorrido">
           <option value="0.5">0,5×</option>
@@ -510,6 +523,7 @@
           <option value="4">4×</option>
         </select>
       </div>
+      <p id="replayShareStatus" class="route-replay-share-status"></p>
     </div>
   </section>
 
@@ -520,8 +534,8 @@
 
   <!-- App Logic (Cache-busted) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/app.js?v=17"></script>
-  <script src="js/route-replay.js?v=17"></script>
-  <script src="js/track-creator.js?v=17"></script>
+  <script src="js/app.js?v=18"></script>
+  <script src="js/route-replay.js?v=18"></script>
+  <script src="js/track-creator.js?v=18"></script>
 </body>
 </html>
