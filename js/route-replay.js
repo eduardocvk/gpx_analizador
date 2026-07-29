@@ -13,6 +13,8 @@ let routeReplayDuration = 60000;
 let routeReplaySpeed = 1;
 let routeReplayPoints = [];
 let routeReplayLastLineUpdate = 0;
+let routeReplayCameraBearing = null;
+let routeReplayLastCameraTime = 0;
 
 function replayPointFeature(point) {
   return {
@@ -75,6 +77,60 @@ function calculateReplayBearing(current, next) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+function findReplayIndexAtDistance(distance) {
+  let low = 0;
+  let high = routeReplayPoints.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (routeReplayPoints[middle].distance < distance) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function calculateReplayDirection(targetDistance, currentPoint) {
+  const points = routeReplayPoints;
+  const totalDistance = points[points.length - 1].distance || 1;
+  const lookAheadKm = Math.max(0.6, Math.min(1.5, totalDistance * 0.015));
+  const behindDistance = Math.max(0, targetDistance - lookAheadKm * 0.25);
+  const aheadDistance = Math.min(totalDistance, targetDistance + lookAheadKm);
+  const behind = points[findReplayIndexAtDistance(behindDistance)] || currentPoint;
+  const ahead = points[findReplayIndexAtDistance(aheadDistance)] || currentPoint;
+
+  if (aheadDistance - behindDistance < 0.05) {
+    return calculateReplayBearing(points[Math.max(0, points.length - 2)], points[points.length - 1]);
+  }
+  return calculateReplayBearing(behind, ahead);
+}
+
+function shortestBearingDelta(target, current) {
+  return ((target - current + 540) % 360) - 180;
+}
+
+function stabilizeReplayBearing(targetBearing, timestamp = 0) {
+  if (routeReplayCameraBearing === null || !timestamp) {
+    routeReplayCameraBearing = targetBearing;
+    routeReplayLastCameraTime = timestamp || performance.now();
+    return routeReplayCameraBearing;
+  }
+
+  const delta = shortestBearingDelta(targetBearing, routeReplayCameraBearing);
+  const absoluteDelta = Math.abs(delta);
+  const deadZone = 14;
+  const elapsedSeconds = Math.max(1 / 120, Math.min((timestamp - routeReplayLastCameraTime) / 1000, 0.1));
+  routeReplayLastCameraTime = timestamp;
+
+  // Small bends and GPS noise do not rotate the camera at all. Genuine changes
+  // of direction rotate progressively, with U-turns allowed to settle faster.
+  if (absoluteDelta <= deadZone) return routeReplayCameraBearing;
+  const degreesPerSecond = absoluteDelta > 110 ? 65 : absoluteDelta > 55 ? 34 : 16;
+  const usefulDelta = delta - Math.sign(delta) * deadZone;
+  const maxStep = degreesPerSecond * elapsedSeconds;
+  const step = Math.max(-maxStep, Math.min(usefulDelta, maxStep));
+  routeReplayCameraBearing = (routeReplayCameraBearing + step + 360) % 360;
+  return routeReplayCameraBearing;
+}
+
 function findReplayPosition(progress) {
   const points = routeReplayPoints;
   const totalDistance = points[points.length - 1].distance || 0;
@@ -108,7 +164,7 @@ function findReplayPosition(progress) {
   const slopeEnd = points[slopeEndIndex];
   const slopeRun = Math.max(slopeEnd.distance - slopeStart.distance, 0.001);
   const slope = ((slopeEnd.ele - slopeStart.ele) / (slopeRun * 1000)) * 100;
-  return { point, slope, bearing: calculateReplayBearing(previous, next), nextIndex };
+  return { point, slope, bearing: calculateReplayDirection(targetDistance, point), nextIndex };
 }
 
 function setReplayButtonState() {
@@ -119,6 +175,7 @@ function setReplayButtonState() {
 function updateReplayAt(progress, timestamp = 0) {
   if (!routeReplayReady || !routeReplayMap || routeReplayPoints.length < 2) return;
   const position = findReplayPosition(progress);
+  const cameraBearing = stabilizeReplayBearing(position.bearing, timestamp);
   const percent = Math.round(progress * 100);
   const markerSource = routeReplayMap.getSource('replay-marker');
   const progressSource = routeReplayMap.getSource('replay-progress');
@@ -135,7 +192,7 @@ function updateReplayAt(progress, timestamp = 0) {
   routeReplayMap.jumpTo({
     center: [position.point.lon, position.point.lat],
     elevation: position.point.ele,
-    bearing: position.bearing,
+    bearing: cameraBearing,
     pitch: 67,
     zoom: window.innerWidth < 640 ? 12.9 : 13.5
   });
@@ -186,6 +243,7 @@ function playRouteReplay() {
   if (routeReplayElapsed >= routeReplayDuration) routeReplayElapsed = 0;
   routeReplayPlaying = true;
   routeReplayStartedAt = performance.now();
+  routeReplayLastCameraTime = routeReplayStartedAt;
   setReplayButtonState();
   routeReplayFrame = requestAnimationFrame(replayAnimationFrame);
 }
@@ -214,7 +272,7 @@ function seekRouteReplay(value) {
 function initializeReplayMap() {
   const first = routeReplayPoints[0];
   const last = routeReplayPoints[routeReplayPoints.length - 1];
-  const initialBearing = calculateReplayBearing(first, routeReplayPoints[Math.min(5, routeReplayPoints.length - 1)]);
+  const initialBearing = findReplayPosition(0).bearing;
 
   routeReplayMap = new maplibregl.Map({
     container: 'route3DMap',
@@ -376,6 +434,8 @@ function openRouteReplay() {
   routeReplayElapsed = 0;
   routeReplaySpeed = Number(document.getElementById('routeReplaySpeed').value) || 1;
   routeReplayReady = false;
+  routeReplayCameraBearing = null;
+  routeReplayLastCameraTime = 0;
   document.getElementById('routeReplayTitle').textContent = parsedData.nombre || fileName || 'Ruta';
   document.getElementById('routeReplayLoading').classList.remove('hidden');
   document.getElementById('routeReplayLoading').innerHTML = '<span class="route-replay-spinner"></span><strong>Preparando el terreno…</strong>';
@@ -387,6 +447,8 @@ function openRouteReplay() {
 function closeRouteReplay(hideModal = true) {
   pauseRouteReplay();
   routeReplayReady = false;
+  routeReplayCameraBearing = null;
+  routeReplayLastCameraTime = 0;
   if (routeReplayMap) {
     routeReplayMap.remove();
     routeReplayMap = null;
