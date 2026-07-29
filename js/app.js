@@ -19,7 +19,6 @@ let gpsMarker = null;
 let gpsAccuracyCircle = null;
 let gpsRouteConnector = null;
 let gpsNearestMarker = null;
-let historyThumbnailMaps = [];
 let fileContent = '';
 let fileName = '';
 let deferredPrompt = null;
@@ -1271,97 +1270,77 @@ function createTrackThumbnail(track) {
   let rawPoints = Array.isArray(track?.points) ? track.points : [];
   if (rawPoints.length === 0 && track?.gpxContent) rawPoints = extractPointsFromGPX(track.gpxContent);
   const points = rawPoints.map(point => Array.isArray(point)
-    ? { lat: Number(point[0]), lon: Number(point[1]) }
-    : { lat: Number(point.lat), lon: Number(point.lon ?? point.lng) }
+    ? { lat: Number(point[0]), lon: Number(point[1]), ele: Number(point[2] ?? 0) }
+    : { lat: Number(point.lat), lon: Number(point.lon ?? point.lng), ele: Number(point.ele ?? 0) }
   ).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon));
 
   if (points.length < 2) {
     return '<div class="track-thumbnail flex items-center justify-center text-gray-300" title="Sin vista previa">⌁</div>';
   }
 
-  const sampled = [];
-  const sampleStep = Math.max(1, Math.ceil(points.length / 180));
-  for (let index = 0; index < points.length; index += sampleStep) sampled.push(points[index]);
-  if (sampled[sampled.length - 1] !== points[points.length - 1]) sampled.push(points[points.length - 1]);
+  const routeSample = [];
+  const routeStep = Math.max(1, Math.ceil(points.length / 180));
+  for (let index = 0; index < points.length; index += routeStep) routeSample.push(points[index]);
+  if (routeSample[routeSample.length - 1] !== points[points.length - 1]) routeSample.push(points[points.length - 1]);
 
-  const minLat = Math.min(...sampled.map(point => point.lat));
-  const maxLat = Math.max(...sampled.map(point => point.lat));
-  const minLon = Math.min(...sampled.map(point => point.lon));
-  const maxLon = Math.max(...sampled.map(point => point.lon));
-  const lonRange = Math.max(maxLon - minLon, 0.00001);
-  const latRange = Math.max(maxLat - minLat, 0.00001);
-  const scale = Math.min(84 / lonRange, 42 / latRange);
-  const routeWidth = lonRange * scale;
-  const routeHeight = latRange * scale;
-  const offsetX = (100 - routeWidth) / 2;
-  const offsetY = (58 - routeHeight) / 2;
-  const project = point => ({
-    x: offsetX + (point.lon - minLon) * scale,
-    y: offsetY + (maxLat - point.lat) * scale
-  });
-  const projected = sampled.map(project);
-  const path = projected.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
-  const start = projected[0];
-  const end = projected[projected.length - 1];
+  // Correct longitude by latitude so the silhouette is not stretched east-west.
+  const middleLatitude = routeSample.reduce((sum, point) => sum + point.lat, 0) / routeSample.length;
+  const longitudeFactor = Math.max(0.2, Math.cos(middleLatitude * Math.PI / 180));
+  const routeCoordinates = routeSample.map(point => ({ x: point.lon * longitudeFactor, y: point.lat }));
+  const minX = Math.min(...routeCoordinates.map(point => point.x));
+  const maxX = Math.max(...routeCoordinates.map(point => point.x));
+  const minY = Math.min(...routeCoordinates.map(point => point.y));
+  const maxY = Math.max(...routeCoordinates.map(point => point.y));
+  const xRange = Math.max(maxX - minX, 0.000001);
+  const yRange = Math.max(maxY - minY, 0.000001);
+  const routeScale = Math.min(106 / xRange, 34 / yRange);
+  const routeWidth = xRange * routeScale;
+  const routeHeight = yRange * routeScale;
+  const routeOffsetX = 7 + (106 - routeWidth) / 2;
+  const routeOffsetY = 5 + (34 - routeHeight) / 2;
+  const projectedRoute = routeCoordinates.map(point => ({
+    x: routeOffsetX + (point.x - minX) * routeScale,
+    y: routeOffsetY + (maxY - point.y) * routeScale
+  }));
+  const routePath = projectedRoute.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
 
-  return `<div class="track-thumbnail" title="Vista previa de la ruta">
-    <svg class="track-thumbnail-fallback" viewBox="0 0 100 58" role="img" aria-label="Recorrido de la ruta">
-      <rect width="100" height="58" fill="#eff6ff"/>
-      <path d="M0 15H100M0 30H100M0 45H100M25 0V58M50 0V58M75 0V58" stroke="#dbeafe" stroke-width="0.7"/>
-      <path d="${path}" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="3" fill="#10b981" stroke="#fff" stroke-width="1.3"/>
-      <circle cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="3" fill="#ef4444" stroke="#fff" stroke-width="1.3"/>
-    </svg>
-    <div class="track-thumbnail-map" aria-hidden="true"></div>
-    <span class="track-thumbnail-attribution">© OSM</span>
-  </div>`;
-}
-
-function initializeTrackThumbnailMap(container, track) {
-  if (!container || !window.L || container.offsetWidth === 0) return;
-  let rawPoints = Array.isArray(track?.points) ? track.points : [];
-  if (rawPoints.length === 0 && track?.gpxContent) rawPoints = extractPointsFromGPX(track.gpxContent);
-  const latLngs = rawPoints.map(point => Array.isArray(point)
-    ? [Number(point[0]), Number(point[1])]
-    : [Number(point.lat), Number(point.lon ?? point.lng)]
-  ).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
-  if (latLngs.length < 2) return;
-
-  try {
-    const miniMap = L.map(container, {
-      zoomControl: false,
-      attributionControl: false,
-      dragging: false,
-      scrollWheelZoom: false,
-      doubleClickZoom: false,
-      boxZoom: false,
-      keyboard: false,
-      touchZoom: false,
-      tap: false
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18
-    }).addTo(miniMap);
-    const previewLine = L.polyline(latLngs, {
-      color: '#ef4444',
-      weight: 3,
-      opacity: 0.95,
-      interactive: false
-    }).addTo(miniMap);
-    miniMap.fitBounds(previewLine.getBounds(), { padding: [6, 6], animate: false });
-    historyThumbnailMaps.push(miniMap);
-  } catch (err) {
-    console.warn('Track thumbnail map warning:', err);
+  let accumulatedDistance = 0;
+  const profilePoints = [{ distance: 0, ele: Number.isFinite(points[0].ele) ? points[0].ele : 0 }];
+  for (let index = 1; index < points.length; index++) {
+    accumulatedDistance += haversineDistance(points[index - 1].lat, points[index - 1].lon, points[index].lat, points[index].lon);
+    profilePoints.push({ distance: accumulatedDistance, ele: Number.isFinite(points[index].ele) ? points[index].ele : 0 });
   }
+  const profileStep = Math.max(1, Math.ceil(profilePoints.length / 140));
+  const profileSample = profilePoints.filter((point, index) => index % profileStep === 0);
+  if (profileSample[profileSample.length - 1] !== profilePoints[profilePoints.length - 1]) profileSample.push(profilePoints[profilePoints.length - 1]);
+  const minElevation = Math.min(...profileSample.map(point => point.ele));
+  const maxElevation = Math.max(...profileSample.map(point => point.ele));
+  const elevationRange = Math.max(maxElevation - minElevation, 1);
+  const totalDistance = Math.max(accumulatedDistance, 0.001);
+  const profilePath = profileSample.map((point, index) => {
+    const x = 7 + (point.distance / totalDistance) * 106;
+    const y = 66 - ((point.ele - minElevation) / elevationRange) * 14;
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+  const routeStart = projectedRoute[0];
+  const routeEnd = projectedRoute[projectedRoute.length - 1];
+
+  return `<div class="track-thumbnail" title="Silueta y perfil de la ruta">
+    <svg viewBox="0 0 120 72" role="img" aria-label="Silueta y perfil altimétrico de la ruta">
+      <rect width="120" height="72" fill="#ffffff"/>
+      <path d="${routePath}" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${routeStart.x.toFixed(1)}" cy="${routeStart.y.toFixed(1)}" r="2.5" fill="#111827"/>
+      <circle cx="${routeEnd.x.toFixed(1)}" cy="${routeEnd.y.toFixed(1)}" r="2.5" fill="#ffffff" stroke="#111827" stroke-width="1.5"/>
+      <path d="M7 46H113" stroke="#e5e7eb" stroke-width="1"/>
+      <path d="${profilePath}" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>`;
 }
 
 function renderHistoryTable(tracks) {
   const tbody = document.getElementById('tablaHistorial');
   const statsContainer = document.getElementById('historialStats');
   if (!tbody) return;
-
-  historyThumbnailMaps.forEach(thumbnailMap => thumbnailMap.remove());
-  historyThumbnailMaps = [];
 
   if (!tracks || tracks.length === 0) {
     if (statsContainer) statsContainer.classList.add('hidden');
@@ -1488,7 +1467,6 @@ function renderHistoryTable(tracks) {
     });
 
     tbody.appendChild(tr);
-    initializeTrackThumbnailMap(tr.querySelector('.track-thumbnail-map'), t);
   });
 }
 
