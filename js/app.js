@@ -1679,8 +1679,18 @@ function reanalyzeTrack(track) {
 }
 
 function getCurrentAnalyzedTrack() {
-  if (!parsedData || !fileContent) return null;
-  return currentAnalyzedTrack || {
+  // A saved route is already a complete editing source. Do not reject it just
+  // because the transient fileContent copy is empty (for example after cloud
+  // hydration or a PWA restoration).
+  if (currentAnalyzedTrack) {
+    const safeGPX = ensureValidGPXContent(currentAnalyzedTrack);
+    if (safeGPX?.includes('<trkpt')) {
+      return { ...currentAnalyzedTrack, gpxContent: safeGPX };
+    }
+  }
+
+  if (!parsedData || !fileContent?.includes('<trkpt')) return null;
+  return {
     nombre: parsedData.nombre || fileName.replace(/\.gpx$/i, '') || 'Ruta',
     gpxContent: fileContent
   };
@@ -1727,12 +1737,20 @@ function setupAnalyzerMenu() {
   document.getElementById('btnAnalyzeEdit')?.addEventListener('click', () => {
     const track = getCurrentAnalyzedTrack();
     closeAnalyzerMenu();
-    if (track && typeof editTrackInCreator === 'function') editTrackInCreator(track);
+    if (track && typeof editTrackInCreator === 'function') {
+      editTrackInCreator(track);
+    } else {
+      alert('No se pudo recuperar la ruta para editarla. Vuelve a abrirla desde Mis Tracks.');
+    }
   });
   document.getElementById('btnAnalyzeDuplicate')?.addEventListener('click', () => {
     const track = getCurrentAnalyzedTrack();
     closeAnalyzerMenu();
-    if (track && typeof duplicateTrackInCreator === 'function') duplicateTrackInCreator(track);
+    if (track && typeof duplicateTrackInCreator === 'function') {
+      duplicateTrackInCreator(track);
+    } else {
+      alert('No se pudo recuperar la ruta para duplicarla. Vuelve a abrirla desde Mis Tracks.');
+    }
   });
   document.getElementById('btnNavigateStart')?.addEventListener('click', () => openTrackPointInGoogleMaps('start'));
   document.getElementById('btnNavigateEnd')?.addEventListener('click', () => openTrackPointInGoogleMaps('end'));
