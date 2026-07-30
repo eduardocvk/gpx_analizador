@@ -1730,35 +1730,37 @@ function setupAnalyzerMenu() {
     event.stopPropagation();
     toggleAnalyzerMenu();
   });
-  document.getElementById('analyzerMenu')?.addEventListener('click', event => event.stopPropagation());
-  document.addEventListener('click', closeAnalyzerMenu);
-  document.getElementById('btnOpenRouteReplay')?.addEventListener('click', closeAnalyzerMenu);
+  document.getElementById('analyzerMenu')?.addEventListener('click', event => {
+    event.stopPropagation();
+    const button = event.target.closest('button[data-analyzer-action]');
+    if (!button || button.disabled) return;
 
-  document.getElementById('btnAnalyzeEdit')?.addEventListener('click', () => {
+    const action = button.dataset.analyzerAction;
+    if (action === 'replay') {
+      closeAnalyzerMenu();
+      return;
+    }
+    if (action === 'start' || action === 'end') {
+      openTrackPointInGoogleMaps(action);
+      return;
+    }
+
     const track = getCurrentAnalyzedTrack();
     closeAnalyzerMenu();
-    if (track && typeof editTrackInCreator === 'function') {
+    if (!track) {
+      alert('No se pudo recuperar la ruta. Vuelve a abrirla desde Mis Tracks.');
+      return;
+    }
+
+    if (action === 'edit' && typeof editTrackInCreator === 'function') {
       editTrackInCreator(track);
-    } else {
-      alert('No se pudo recuperar la ruta para editarla. Vuelve a abrirla desde Mis Tracks.');
-    }
-  });
-  document.getElementById('btnAnalyzeDuplicate')?.addEventListener('click', () => {
-    const track = getCurrentAnalyzedTrack();
-    closeAnalyzerMenu();
-    if (track && typeof duplicateTrackInCreator === 'function') {
+    } else if (action === 'duplicate' && typeof duplicateTrackInCreator === 'function') {
       duplicateTrackInCreator(track);
-    } else {
-      alert('No se pudo recuperar la ruta para duplicarla. Vuelve a abrirla desde Mis Tracks.');
+    } else if (action === 'download') {
+      downloadGPX(ensureValidGPXContent(track), `${track.nombre}.gpx`);
     }
   });
-  document.getElementById('btnNavigateStart')?.addEventListener('click', () => openTrackPointInGoogleMaps('start'));
-  document.getElementById('btnNavigateEnd')?.addEventListener('click', () => openTrackPointInGoogleMaps('end'));
-  document.getElementById('btnAnalyzeDownload')?.addEventListener('click', () => {
-    const track = getCurrentAnalyzedTrack();
-    closeAnalyzerMenu();
-    if (track) downloadGPX(ensureValidGPXContent(track), `${track.nombre}.gpx`);
-  });
+  document.addEventListener('click', closeAnalyzerMenu);
 }
 
 function downloadGPX(content, filename) {

@@ -34,7 +34,7 @@
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css?v=20">
+  <link rel="stylesheet" href="css/style.css?v=21">
 </head>
 
 <body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
@@ -133,13 +133,13 @@
                 <span aria-hidden="true">•••</span>
               </button>
               <div id="analyzerMenu" class="analyzer-menu hidden" role="menu">
-                <button id="btnOpenRouteReplay" type="button" disabled role="menuitem"><span>▶</span> Recorrido 3D</button>
-                <button id="btnAnalyzeEdit" type="button" role="menuitem"><span>✏️</span> Editar ruta</button>
-                <button id="btnAnalyzeDuplicate" type="button" role="menuitem"><span>⧉</span> Duplicar ruta</button>
+                <button id="btnOpenRouteReplay" type="button" disabled role="menuitem" data-analyzer-action="replay"><span>▶</span> Recorrido 3D</button>
+                <button id="btnAnalyzeEdit" type="button" role="menuitem" data-analyzer-action="edit"><span>✏️</span> Editar ruta</button>
+                <button id="btnAnalyzeDuplicate" type="button" role="menuitem" data-analyzer-action="duplicate"><span>⧉</span> Duplicar ruta</button>
                 <div class="analyzer-menu-separator"></div>
-                <button id="btnNavigateStart" type="button" role="menuitem"><span>🟢</span> Navegar al inicio</button>
-                <button id="btnNavigateEnd" type="button" role="menuitem"><span>🔴</span> Navegar al final</button>
-                <button id="btnAnalyzeDownload" type="button" role="menuitem"><span>↓</span> Descargar GPX</button>
+                <button id="btnNavigateStart" type="button" role="menuitem" data-analyzer-action="start"><span>🟢</span> Navegar al inicio</button>
+                <button id="btnNavigateEnd" type="button" role="menuitem" data-analyzer-action="end"><span>🔴</span> Navegar al final</button>
+                <button id="btnAnalyzeDownload" type="button" role="menuitem" data-analyzer-action="download"><span>↓</span> Descargar GPX</button>
               </div>
             </div>
           </div>
@@ -547,8 +547,8 @@
 
   <!-- App Logic (Cache-busted) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/app.js?v=20"></script>
-  <script src="js/route-replay.js?v=20"></script>
-  <script src="js/track-creator.js?v=20"></script>
+  <script src="js/app.js?v=21"></script>
+  <script src="js/route-replay.js?v=21"></script>
+  <script src="js/track-creator.js?v=21"></script>
 </body>
 </html>
