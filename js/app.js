@@ -22,6 +22,7 @@ let gpsNearestMarker = null;
 let fileContent = '';
 let fileName = '';
 let deferredPrompt = null;
+let currentAnalyzedTrack = null;
 
 
 // =============================================
@@ -740,6 +741,18 @@ function initMap() {
   });
 }
 
+function fitAnalyzedRoute() {
+  if (!map || !mapPolyline) return;
+  const bounds = mapPolyline.getBounds();
+  if (!bounds?.isValid()) return;
+  map.invalidateSize();
+  map.fitBounds(bounds, {
+    padding: window.innerWidth < 640 ? [28, 28] : [52, 52],
+    maxZoom: 16,
+    animate: false
+  });
+}
+
 function updateMap(points) {
   const latLngs = points.map(p => [p.lat, p.lon]);
   if (mapPolyline) map.removeLayer(mapPolyline);
@@ -752,7 +765,7 @@ function updateMap(points) {
     opacity: 0.85
   }).addTo(map);
 
-  map.fitBounds(mapPolyline.getBounds(), { padding: [30, 30] });
+  fitAnalyzedRoute();
 
   // Add start and end markers
   const startIcon = L.divIcon({
@@ -1192,10 +1205,11 @@ function toggleChartFullscreen(forceExpanded = null) {
 // 5. FILE HANDLING & DISPLAY
 // =============================================
 
-function processAndDisplay(gpxText, name) {
+function processAndDisplay(gpxText, name, sourceTrack = null) {
   try {
     parsedData = parseGPX(gpxText);
     fileContent = gpxText;
+    currentAnalyzedTrack = sourceTrack;
     if (name) fileName = name;
     if (typeof resetRouteReplayShare === 'function') resetRouteReplayShare();
 
@@ -1219,6 +1233,7 @@ function processAndDisplay(gpxText, name) {
     renderChart();
     detectedClimbs = detectClimbs(parsedData.puntos);
     renderDetectedClimbs(detectedClimbs);
+    setTimeout(() => fitAnalyzedRoute(), 180);
   } catch (err) {
     alert('Error procesando GPX: ' + err.message);
   }
@@ -1485,6 +1500,9 @@ function renderHistoryTable(tracks) {
     if (mobileCards) {
       const card = document.createElement('article');
       card.className = 'track-mobile-card';
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Analizar ${t.nombre}`);
       card.innerHTML = `
         <div class="track-mobile-header">
           ${createTrackThumbnail(t)}
@@ -1509,7 +1527,7 @@ function renderHistoryTable(tracks) {
           <button class="btn-delete track-mobile-delete" type="button">🗑 <span>Eliminar</span></button>
         </div>`;
       mobileCards.appendChild(card);
-      bindTrackActions(card, t, false);
+      bindTrackActions(card, t, true);
     }
   });
 }
@@ -1519,6 +1537,12 @@ function bindTrackActions(container, track, openOnContainerClick) {
     container.addEventListener('click', event => {
       if (event.target.closest('button')) return;
       reanalyzeTrack(track);
+    });
+    container.addEventListener('keydown', event => {
+      if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) {
+        event.preventDefault();
+        reanalyzeTrack(track);
+      }
     });
   }
 
@@ -1650,8 +1674,73 @@ function reanalyzeTrack(track) {
     alert('No se pudieron recuperar los puntos de la ruta.');
     return;
   }
-  processAndDisplay(safeGPX, track.nombre + '.gpx');
   switchToTab('analizar');
+  processAndDisplay(safeGPX, track.nombre + '.gpx', track);
+}
+
+function getCurrentAnalyzedTrack() {
+  if (!parsedData || !fileContent) return null;
+  return currentAnalyzedTrack || {
+    nombre: parsedData.nombre || fileName.replace(/\.gpx$/i, '') || 'Ruta',
+    gpxContent: fileContent
+  };
+}
+
+function closeAnalyzerMenu() {
+  const menu = document.getElementById('analyzerMenu');
+  const trigger = document.getElementById('btnAnalyzerMenu');
+  menu?.classList.add('hidden');
+  trigger?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleAnalyzerMenu() {
+  const menu = document.getElementById('analyzerMenu');
+  const trigger = document.getElementById('btnAnalyzerMenu');
+  if (!menu || !trigger) return;
+  const willOpen = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !willOpen);
+  trigger.setAttribute('aria-expanded', String(willOpen));
+}
+
+function openTrackPointInGoogleMaps(which) {
+  const points = parsedData?.puntos;
+  if (!points?.length) return;
+  const point = which === 'end' ? points[points.length - 1] : points[0];
+  const destination = `${Number(point.lat).toFixed(7)},${Number(point.lon).toFixed(7)}`;
+  const url = new URL('https://www.google.com/maps/dir/');
+  url.searchParams.set('api', '1');
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('travelmode', 'bicycling');
+  window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  closeAnalyzerMenu();
+}
+
+function setupAnalyzerMenu() {
+  document.getElementById('btnAnalyzerMenu')?.addEventListener('click', event => {
+    event.stopPropagation();
+    toggleAnalyzerMenu();
+  });
+  document.getElementById('analyzerMenu')?.addEventListener('click', event => event.stopPropagation());
+  document.addEventListener('click', closeAnalyzerMenu);
+  document.getElementById('btnOpenRouteReplay')?.addEventListener('click', closeAnalyzerMenu);
+
+  document.getElementById('btnAnalyzeEdit')?.addEventListener('click', () => {
+    const track = getCurrentAnalyzedTrack();
+    closeAnalyzerMenu();
+    if (track && typeof editTrackInCreator === 'function') editTrackInCreator(track);
+  });
+  document.getElementById('btnAnalyzeDuplicate')?.addEventListener('click', () => {
+    const track = getCurrentAnalyzedTrack();
+    closeAnalyzerMenu();
+    if (track && typeof duplicateTrackInCreator === 'function') duplicateTrackInCreator(track);
+  });
+  document.getElementById('btnNavigateStart')?.addEventListener('click', () => openTrackPointInGoogleMaps('start'));
+  document.getElementById('btnNavigateEnd')?.addEventListener('click', () => openTrackPointInGoogleMaps('end'));
+  document.getElementById('btnAnalyzeDownload')?.addEventListener('click', () => {
+    const track = getCurrentAnalyzedTrack();
+    closeAnalyzerMenu();
+    if (track) downloadGPX(ensureValidGPXContent(track), `${track.nombre}.gpx`);
+  });
 }
 
 function downloadGPX(content, filename) {
@@ -1702,7 +1791,7 @@ function switchToTab(tab) {
     // Recalculate map/chart sizes after tab switch
     setTimeout(() => {
       if (chart) chart.resize();
-      if (map) map.invalidateSize();
+      fitAnalyzedRoute();
     }, 150);
   } else if (tab === 'historial') {
     vistaH.classList.remove('hidden');
@@ -1713,7 +1802,10 @@ function switchToTab(tab) {
     btnC.className = activeClass;
     // Lazy-init creator map
     if (typeof initCreator === 'function') {
-      setTimeout(() => initCreator(), 150);
+      setTimeout(() => {
+        initCreator();
+        if (typeof fitCreatorRoute === 'function') fitCreatorRoute();
+      }, 150);
     }
   }
 }
@@ -1762,6 +1854,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   initChart();
   if (typeof initRouteReplayUI === 'function') initRouteReplayUI();
+  setupAnalyzerMenu();
   consumeSharedGPX();
   document.getElementById('btnTrackLocation')?.addEventListener('click', toggleTrackLocation);
 
@@ -1786,6 +1879,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (resetChartZoomBtn) resetChartZoomBtn.addEventListener('click', resetChartZoom);
   if (toggleChartFullscreenBtn) toggleChartFullscreenBtn.addEventListener('click', () => toggleChartFullscreen());
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAnalyzerMenu();
     if (e.key === 'Escape' && document.getElementById('profileCard')?.classList.contains('profile-expanded')) {
       toggleChartFullscreen(false);
     }

@@ -1029,32 +1029,27 @@ function editTrackInCreator(track, options = {}) {
 
     const points = parsed.puntos;
 
-    // Select waypoints: start, end, and downsampled interior points if large
-    let selectedWaypoints = [];
+    // Preserve original indexes. Coordinate lookups are ambiguous when a route
+    // crosses or revisits the same place and can make a segment jump to the end.
+    const selectedIndexes = [];
     if (points.length <= 60) {
-      selectedWaypoints = points.map(p => L.latLng(p.lat, p.lon));
+      for (let i = 0; i < points.length; i++) selectedIndexes.push(i);
     } else {
       const step = Math.ceil(points.length / 30);
-      selectedWaypoints.push(L.latLng(points[0].lat, points[0].lon));
-      for (let i = step; i < points.length - 1; i += step) {
-        selectedWaypoints.push(L.latLng(points[i].lat, points[i].lon));
-      }
-      selectedWaypoints.push(L.latLng(points[points.length - 1].lat, points[points.length - 1].lon));
+      selectedIndexes.push(0);
+      for (let i = step; i < points.length - 1; i += step) selectedIndexes.push(i);
+      selectedIndexes.push(points.length - 1);
     }
 
-    creator.waypoints = selectedWaypoints;
+    creator.waypoints = selectedIndexes.map(index => L.latLng(points[index].lat, points[index].lon));
 
     // Build segments between waypoints from original detailed points
     creator.routeSegments = [];
-    for (let i = 0; i < selectedWaypoints.length - 1; i++) {
-      const wpA = selectedWaypoints[i];
-      const wpB = selectedWaypoints[i + 1];
-
-      let idxA = points.findIndex(p => p.lat === wpA.lat && p.lon === wpA.lng);
-      let idxB = points.findIndex(p => p.lat === wpB.lat && p.lon === wpB.lng);
-      if (idxA === -1) idxA = 0;
-      if (idxB === -1 || idxB <= idxA) idxB = points.length - 1;
-
+    for (let i = 0; i < selectedIndexes.length - 1; i++) {
+      const idxA = selectedIndexes[i];
+      const idxB = selectedIndexes[i + 1];
+      const wpA = creator.waypoints[i];
+      const wpB = creator.waypoints[i + 1];
       const segPoints = points.slice(idxA, idxB + 1).map(p => [p.lat, p.lon, p.ele || 0]);
       creator.routeSegments.push(segPoints.length > 0 ? segPoints : [[wpA.lat, wpA.lng, 0], [wpB.lat, wpB.lng, 0]]);
     }
@@ -1067,11 +1062,8 @@ function editTrackInCreator(track, options = {}) {
     updateMidpoints();
     updateCreatorStats();
 
-    if (creator.polyline && creator.map) {
-      creator.map.fitBounds(creator.polyline.getBounds(), { padding: [30, 30] });
-    }
-
     switchToTab('crear');
+    setTimeout(() => fitCreatorRoute(), 220);
 
     const status = document.getElementById('creatorSaveStatus');
     if (asCopy && status) {
@@ -1090,6 +1082,18 @@ function editTrackInCreator(track, options = {}) {
 
 function duplicateTrackInCreator(track) {
   editTrackInCreator(track, { asCopy: true });
+}
+
+function fitCreatorRoute() {
+  if (!creator.map || !creator.polyline) return;
+  const bounds = creator.polyline.getBounds();
+  if (!bounds?.isValid()) return;
+  creator.map.invalidateSize();
+  creator.map.fitBounds(bounds, {
+    padding: window.innerWidth < 640 ? [28, 28] : [52, 52],
+    maxZoom: 16,
+    animate: false
+  });
 }
 
 

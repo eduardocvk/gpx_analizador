@@ -209,6 +209,111 @@ body.profile-modal-open {
   box-shadow: none;
 }
 
+/* --- Analyzer compact actions menu --- */
+.analyzer-actions {
+  position: relative;
+  z-index: 500;
+}
+
+.analyzer-menu-trigger {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dbe3ee;
+  border-radius: 0.7rem;
+  color: #334155;
+  background: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.analyzer-menu-trigger:hover,
+.analyzer-menu-trigger[aria-expanded="true"] {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.analyzer-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  width: 220px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
+}
+
+.analyzer-menu button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  color: #334155;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.analyzer-menu button:hover {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.analyzer-menu button:disabled {
+  opacity: 0.45;
+}
+
+.analyzer-menu button span {
+  width: 20px;
+  text-align: center;
+}
+
+.analyzer-menu-separator {
+  height: 1px;
+  margin: 0.2rem 0;
+  background: #e2e8f0;
+}
+
+/* --- Collapsible shared 3D links --- */
+.shared-replays-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.shared-replays-summary::-webkit-details-marker {
+  display: none;
+}
+
+.shared-replays-chevron {
+  color: #64748b;
+  font-size: 20px;
+  font-weight: 800;
+  transition: transform 0.18s ease;
+}
+
+.shared-replays-panel[open] .shared-replays-chevron {
+  transform: rotate(180deg);
+}
+
+.shared-replays-content {
+  padding: 0 0.8rem 0.8rem;
+}
+
 .route-replay-modal {
   position: fixed;
   inset: 0;
@@ -720,6 +825,12 @@ body.route-replay-open {
 
   .track-mobile-card {
     padding: 0.8rem;
+    cursor: pointer;
+  }
+
+  .track-mobile-card:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.35);
+    outline-offset: 2px;
   }
 
   .track-mobile-empty {
